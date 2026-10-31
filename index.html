@@ -245,6 +245,19 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .login{max-width:360px;margin:48px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:12px}
 .loginf{display:flex;flex-direction:column;gap:12px}
 .lgerr{color:var(--bad);margin:0;font-size:13px;font-weight:600}
+.mylist{display:flex;flex-direction:column;gap:10px}
+.myday{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.mydate{display:flex;gap:10px;align-items:baseline;padding:9px 14px;background:var(--sunk)}
+.mydate b{font-size:16px} .mydate span{color:var(--muted);font-size:13px} .mydate.we span{color:var(--bad)}
+.myshift{display:flex;gap:10px;align-items:flex-start;padding:10px 14px}
+.myshift+.myshift{border-top:1px solid var(--line)}
+.myt{font-size:14px} .mym{color:var(--muted);font-size:13px;margin-top:2px}
+.mywarn{color:var(--warn);font-size:12.5px;font-weight:600;margin-top:3px}
+.mycal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:12px;max-width:520px}
+.urow{border:1px solid var(--line);border-radius:8px;padding:9px 11px;display:flex;flex-direction:column;gap:7px}
+.urow+.urow{margin-top:6px}
+.uh{display:flex;flex-direction:column}
+.urow select{max-width:100%}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -317,7 +330,8 @@ const Store={
     clearTimeout(this.timers[path]);this.timers[path]=setTimeout(()=>this.flush(path),450);
   },
   body(path){
-    if(path==='cfg/main')return clone(S.cfg);
+    if(path==='cfg/main')return this.mode==='supa'?splitCfg().pub:clone(S.cfg);
+    if(path==='cfg/private')return splitCfg().priv;
     const[col,id]=path.split('/');
     if(col==='avail')return S.avail[id]?{dates:clone(S.avail[id])}:null;
     if(col==='months')return S.months[id]&&Object.keys(S.months[id]).length?{days:clone(S.months[id])}:null;
@@ -348,9 +362,20 @@ function writeErr(e){
   else if(c==='quota_exceeded')toast('Хранилище заполнено — удалите старые месяцы расписания');
   else toast('Не удалось сохранить изменение. Проверьте связь');
 }
-const markCfg=()=>Store.mark('cfg/main');
-const markMonth=ym=>Store.mark('months/'+ym);
-const markAvail=id=>Store.mark('avail/'+id);
+const markCfg=()=>{if(!isAdmin())return;Store.mark('cfg/main');if(Store.mode==='supa')Store.mark('cfg/private')};
+// служебное (ставки, телефоны, заметки, приоритеты и «не ставить») хранится отдельно и видно только администратору
+const PRIV_D=['prio','block'],PRIV_A=['rate','rateHalf','phone','note'];
+let PRIV={doctors:{},assistants:{}};
+function splitCfg(){const pub=clone(S.cfg),priv={doctors:{},assistants:{}};
+  pub.doctors.forEach(d=>{priv.doctors[d.id]={};PRIV_D.forEach(k=>{if(d[k]!==undefined)priv.doctors[d.id][k]=d[k];delete d[k]})});
+  pub.assistants.forEach(a=>{priv.assistants[a.id]={};PRIV_A.forEach(k=>{if(a[k]!==undefined)priv.assistants[a.id][k]=a[k];delete a[k]})});
+  return{pub,priv}}
+function mergePriv(){S.cfg.doctors.forEach(d=>Object.assign(d,(PRIV.doctors||{})[d.id]||{}));S.cfg.assistants.forEach(a=>Object.assign(a,(PRIV.assistants||{})[a.id]||{}))}
+const ROLE=()=>SUPA_ON?(ME&&ME.role)||'none':'admin';
+const isAdmin=()=>ROLE()==='admin';
+const myCard=()=>ME&&ME.card_id||null;
+const markMonth=ym=>{if(!isAdmin())return;Store.mark('months/'+ym)};
+const markAvail=id=>{if(!isAdmin()&&!(ROLE()==='assistant'&&id===myCard()))return;Store.mark('avail/'+id)};
 
 function normalize(){
   const c=S.cfg;['tags','doctors','assistants','clinics'].forEach(k=>{if(!Array.isArray(c[k]))c[k]=[]});
@@ -366,10 +391,11 @@ const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 function costMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{if(en.assistantId){const a=asById(en.assistantId);m[en.assistantId]=(m[en.assistantId]||0)+shiftCost(a,en.shift)}}));return m}
 function setStore(cls,text){const el=$('#store');el.className='store '+cls;el.lastElementChild.textContent=text}
 
-let SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
+let LIVE=false,SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
 const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
 function applyDoc(path,data){const[col,id]=path.split('/');
-  if(col==='cfg'&&id==='main'){S.cfg=clone(data);normalize()}
+  if(col==='cfg'&&id==='main'){S.cfg=clone(data);mergePriv();normalize()}
+  else if(col==='cfg'&&id==='private'){PRIV=clone(data||{});PRIV.doctors=PRIV.doctors||{};PRIV.assistants=PRIV.assistants||{};mergePriv();normalize()}
   else if(col==='avail')S.avail[id]=clone(data.dates||{});
   else if(col==='months')S.months[id]=clone(data.days||{})}
 function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id]}
@@ -386,21 +412,27 @@ async function initSupa(){
 async function afterLogin(){
   setStore('','Загрузка…');
   const ur=await SB.auth.getUser();MYID=ur.data&&ur.data.user?ur.data.user.id:null;
-  const mr=await SB.from('members').select('role,login,name').eq('user_id',MYID).maybeSingle();
+  const mr=await SB.from('members').select('*').eq('user_id',MYID).maybeSingle();
   if(mr.error){console.warn('members',mr.error);ME={role:'admin',login:emailToLogin(ur.data?.user?.email)}} // таблицы участников ещё нет — прежний режим
   else ME=mr.data||{role:'none'};
-  if(ME.role!=='admin'){AUTHED=false;PENDING=true;setStore('warn','Нет доступа');render();return}
+  if(!['admin','assistant','doctor'].includes(ME.role)){AUTHED=false;PENDING=true;setStore('warn','Нет доступа');render();return}
   PENDING=false;
   const{data,error}=await SB.from('docs').select('path,data');
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
-  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};
-  data.forEach(r=>applyDoc(r.path,r.data));normalize();
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};PRIV={doctors:{},assistants:{}};
+  const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
+  data.forEach(r=>{if(r.path!=='cfg/main')applyDoc(r.path,r.data)});normalize();
   AUTHED=true;LOGIN_ERR='';
+  // перенос служебных полей из общего документа в закрытый (один раз)
+  if(isAdmin()&&cfgRow&&((cfgRow.data.doctors||[]).some(d=>d.prio||d.block)||(cfgRow.data.assistants||[]).some(a=>PRIV_A.some(k=>a[k]!==undefined))))markCfg();
+  if(!isAdmin())UI.rtab=UI.rtab||'mine';
+  if(LIVE)return setStore('on',isAdmin()?'Сохраняется в базе':'Подключено'),render();
+  LIVE=true;
   SB.channel('docs-live').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
     const path=(p.new&&p.new.path)||(p.old&&p.old.path);if(!path||Store.dirty.has(path))return;
     if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
   }).subscribe();
-  setStore('on','Сохраняется в базе');render();
+  setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();
 }
 function viewLogin(){
   const reg=AUTH_TAB==='reg';
@@ -449,25 +481,37 @@ async function doRegister(){
   await afterLogin();
 }
 /* управление пользователями (для администратора) */
+const ROLE_L={pending:'Ожидает',admin:'Администратор',assistant:'Ассистент',doctor:'Врач',blocked:'Доступ закрыт'};
 function openUsers(){
-  let list=null,err='';
-  const load=async()=>{const r=await SB.from('members').select('user_id,login,name,role,created_at').order('created_at');if(r.error)err=r.error.message;else list=r.data;if(M.open)M.refresh()};
-  const RL={pending:'Ожидают доступа',admin:'С доступом',blocked:'Доступ закрыт'};
+  let list=null,err='';const draft={};
+  const load=async()=>{const r=await SB.from('members').select('*').order('created_at');if(r.error)err=r.error.message;else{list=r.data;list.forEach(u=>draft[u.user_id]={role:u.role,card:u.card_id||''})}if(M.open)M.refresh()};
+  const cardName=(role,id)=>role==='assistant'?asById(id)?.name:role==='doctor'?docById(id)?.name:'';
+  const row=u=>{const dr=draft[u.user_id];const self=u.user_id===MYID;const changed=dr.role!==u.role||(dr.card||'')!==(u.card_id||'');
+    const cards=dr.role==='assistant'?S.cfg.assistants:dr.role==='doctor'?S.cfg.doctors:null;
+    return`<div class="urow"><div class="uh"><span class="nm">${esc(u.name||u.login)}</span><span class="why">логин: ${esc(u.login)}${self?' · это вы':''}</span>
+      ${u.role!=='pending'&&!changed?`<span class="why">${ROLE_L[u.role]||u.role}${cardName(u.role,u.card_id)?' · '+esc(cardName(u.role,u.card_id)):''}</span>`:''}</div>
+      ${self?'':`<div class="row" style="gap:6px">
+        <select class="urole" data-u="${u.user_id}" aria-label="Роль">${(u.role==='pending'?['pending']:[]).concat(['assistant','doctor','admin','blocked']).map(r=>`<option value="${r}" ${dr.role===r?'selected':''}>${r==='pending'?'— выберите роль —':ROLE_L[r]}</option>`).join('')}</select>
+        ${cards?`<select class="ucard" data-u="${u.user_id}" aria-label="Карточка"><option value="">— чья карточка —</option>${cards.slice().sort(byName).map(c=>`<option value="${c.id}" ${dr.card===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
+        ${changed?`<button class="btn sm primary" data-act="u-save" data-u="${u.user_id}">${u.role==='pending'?'Дать доступ':'Сохранить'}</button>`:''}
+        ${u.role==='pending'?`<button class="btn sm" data-act="u-reject" data-u="${u.user_id}">Отклонить</button>`:''}</div>`}</div>`};
   M.show(()=>{
     let body;
     if(err)body=`<div class="note">Не удалось загрузить список: ${esc(err)}</div>`;
     else if(!list)body='<p class="sub">Загрузка…</p>';
-    else body=['pending','admin','blocked'].map(g=>{const arr=list.filter(u=>u.role===g);if(!arr.length&&g!=='pending')return'';
-      return`<div class="grp"><h3>${RL[g]}<span class="n num">${arr.length}</span></h3>${arr.map(u=>`<div class="cand" style="cursor:default"><span><span class="nm">${esc(u.name||u.login)}</span><br><span class="why">логин: ${esc(u.login)}${u.user_id===MYID?' · это вы':''}</span></span><span class="r" style="display:flex;gap:6px">
-        ${g==='pending'?`<button class="btn sm primary" data-act="u-role" data-u="${u.user_id}" data-v="admin">Дать доступ</button><button class="btn sm" data-act="u-role" data-u="${u.user_id}" data-v="blocked">Отклонить</button>`:''}
-        ${g==='admin'&&u.user_id!==MYID?`<button class="btn sm danger" data-act="u-role" data-u="${u.user_id}" data-v="blocked">Закрыть доступ</button>`:''}
-        ${g==='blocked'?`<button class="btn sm" data-act="u-role" data-u="${u.user_id}" data-v="admin">Вернуть доступ</button>`:''}</span></div>`).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('');
-    return{title:'<h2>Пользователи</h2><p class="sub">Новые люди регистрируются сами на экране входа и попадают сюда. Пока у всех с доступом одинаковые права.</p>',
-      body,foot:'<button class="btn" data-act="u-reload">Обновить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>'};
-  });
+    else{const G=[['Ожидают доступа',u=>u.role==='pending'],['С доступом',u=>['admin','assistant','doctor'].includes(u.role)],['Доступ закрыт',u=>u.role==='blocked']];
+      body=G.map(([t,f],i)=>{const arr=list.filter(f);if(!arr.length&&i)return'';return`<div class="grp"><h3>${t}<span class="n num">${arr.length}</span></h3>${arr.map(row).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('')}
+    return{title:'<h2>Пользователи</h2><p class="sub">Новые люди регистрируются сами на экране входа. Выберите роль и, для ассистента или врача, его карточку.</p>',
+      body,foot:'<button class="btn" data-act="u-reload">Обновить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>',
+      bind:r=>{r.querySelectorAll('.urole').forEach(x=>x.onchange=()=>{const d=draft[x.dataset.u];d.role=x.value;if(!['assistant','doctor'].includes(d.role))d.card='';else if(d.card&&!(d.role==='assistant'?asById(d.card):docById(d.card)))d.card='';M.refresh()});
+        r.querySelectorAll('.ucard').forEach(x=>x.onchange=()=>{draft[x.dataset.u].card=x.value;M.refresh()})}};
+  },true);
+  const save=async(uid,role,card)=>{const r=await SB.from('members').update({role,card_id:card||null}).eq('user_id',uid);
+    if(r.error)toast(/card_id/.test(r.error.message)?'Сначала выполните новый SQL в Supabase':'Не удалось изменить: '+r.error.message);else toast(role==='blocked'?'Доступ закрыт':'Сохранено');await load()};
   ACT['u-reload']=()=>{list=null;M.refresh();load()};
-  ACT['u-role']=async b=>{b.classList.add('busy');const r=await SB.from('members').update({role:b.dataset.v}).eq('user_id',b.dataset.u);
-    if(r.error)toast('Не удалось изменить: '+r.error.message);else toast(b.dataset.v==='admin'?'Доступ открыт':'Доступ закрыт');await load()};
+  ACT['u-save']=b=>{const d=draft[b.dataset.u];if(d.role==='pending'){toast('Выберите роль');return}
+    if(['assistant','doctor'].includes(d.role)&&!d.card){toast('Выберите, чья это карточка');return}save(b.dataset.u,d.role,d.card)};
+  ACT['u-reject']=b=>save(b.dataset.u,'blocked','');
   load();
 }
 async function initStore(){
@@ -538,6 +582,7 @@ function entryWarn(date,en){
 function render(){
   const sb=document.querySelector('[data-act=settings]');if(sb)sb.hidden=SUPA_ON&&!AUTHED;
   if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=PENDING?viewPending():viewLogin();return}
+  if(!isAdmin()){$('#main').innerHTML=viewRole();return}
   $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
   const m=$('#main');
   if(UI.tab==='sched')m.innerHTML=UI.mode==='week'?viewWeek():viewBoard();
@@ -554,6 +599,7 @@ function schedHead(){
   <div class="seg" role="group"><button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">График</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
 }
 function cellHTML(d,cl,ch){
+  if(!isAdmin())return cellRO(d,cl,ch);
   const arr=cellArr(d,cl.id,ch,false);const dayExists=!!(dayObj(d,false)||{})[cl.id];const st=SET();let h='';
   arr.forEach(en=>{
     const a=asById(en.assistantId);const wr=a?entryWarn(d,en):'';const miss=MISS.get(en.id);
@@ -567,6 +613,10 @@ function cellHTML(d,cl,ch){
   const full=arr.some(e=>e.shift==='day')||arr.length>=2;
   if(!full&&dayExists)h+=`<button class="addent" data-act="add-ent" data-d="${d}" data-c="${cl.id}" data-ch="${ch}" aria-label="Добавить врача">+ врач</button>`;
   return h;
+}
+function cellRO(d,cl,ch){
+  return cellArr(d,cl.id,ch,false).map(en=>{const a=asById(en.assistantId);const me=ROLE()==='assistant'&&en.assistantId===myCard();
+    return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(docName(en.doctorId))}</span></div><div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(a.name):'—'}</div></div>`}).join('');
 }
 // даты по горизонтали: строки = кресла, столбцы = дни
 function boardH(dates,cls){
@@ -605,7 +655,7 @@ function viewBoard(){
   const load=loadMap();
   let board;
   if(!cls.length){board=`<div class="empty-board"><h2>Нет клиник</h2><p>Добавьте клинику, укажите количество кресел и обычную неделю врачей.</p><button class="btn primary" data-act="mode" data-v="week">Настроить клиники</button></div>`}
-  else if(!has){board=`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`}
+  else if(!has){board=isAdmin()?`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`:`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} графика пока нет</h2><p>Переключите период стрелками.</p></div>`}
   else{
     board=UI.orient==='v'?boardV(dates,cls):boardH(dates,cls);
   }
@@ -615,20 +665,20 @@ function viewBoard(){
       const av=S.avail[a.id]||{};const days=range(UI.from,UI.to).filter(d=>av[d]).length;
       return`<button class="ra" data-act="avail" data-a="${a.id}"><span class="nm">${esc(a.name)}</span><span class="meta num">${days?`${days} дн. может`:'<span class="z">даты не отмечены</span>'}<br>${load[a.id]||0} смен назначено${st.rates&&cost[a.id]?' · '+rub(cost[a.id]):''}</span></button>`}).join('')||`<div class="foot">Ассистентов пока нет — добавьте их в разделе «Ассистенты».</div>`}</div>
     <div class="foot">Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
-  return`${exampleBanner()}${schedHead()}
+  return`${isAdmin()?exampleBanner()+schedHead():'<div><h1>Общий график</h1><p class="sub">Только просмотр. Ваши смены выделены.</p></div>'}
   <div class="toolbar">
     <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
       <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
       <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>
     <span class="spacer"></span>
-    <button class="btn" data-act="open-gen">Сформировать</button>
-    <button class="btn primary" data-act="open-auto">Автозаполнение</button>
+    ${isAdmin()?`<button class="btn" data-act="open-gen">Сформировать</button>
+    <button class="btn primary" data-act="open-auto">Автозаполнение</button>`:''}
     <button class="btn" data-act="export">Скачать / печать</button>
     <button class="btn ghost" data-act="copy" title="Скопировать таблицу для Excel">Копировать</button>
   </div>
   ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
     <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
-  <div class="sched"><div class="boardwrap">${board}</div>${rail}</div>`;
+  <div class="sched" ${isAdmin()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap">${board}</div>${isAdmin()?rail:''}</div>`;
 }
 function viewWeek(){
   const cls=S.cfg.clinics;
@@ -837,35 +887,68 @@ function openTags(){
 }
 
 /* ---------- availability ---------- */
-let AV={month:null,brush:'day'};
+let AV={month:null,brush:'day',aid:null,refresh:()=>{}};
+function availCal(aid){
+  const av=S.avail[aid]||{};const[y,m]=AV.month.split('-').map(Number);
+  const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const off=(first.getDay()+6)%7;
+  const mine=ROLE()==='assistant';const assigned=new Set();
+  if(mine){Object.keys(S.months).forEach(ym=>Object.keys(S.months[ym]).forEach(d=>forEntries(d,en=>{if(en.assistantId===aid)assigned.add(d)})))}
+  let cal=WD.map((w,i)=>`<button class="wh" data-act="av-wd" data-v="${i}" title="Отметить все ${w} месяца">${w}</button>`).join('');
+  for(let i=0;i<off;i++)cal+=`<span class="dd out"></span>`;
+  let cnt=0;
+  for(let d=1;d<=days;d++){const ds=iso(new Date(y,m-1,d));const v=av[ds];if(v)cnt++;
+    const ring=mine?assigned.has(ds):(ds>=UI.from&&ds<=UI.to);const past=mine&&ds<TODAY;
+    cal+=`<button class="dd ${v||''} ${ring?'inp':''}" data-act="av-day" data-v="${ds}" ${past?'disabled style="opacity:.4"':''} aria-label="${ds} ${v?SH[v].l:'нет'}">${d}${v?`<small>${SH[v].s}</small>`:''}</button>`}
+  return`<div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div>
+    <div class="mnav"><button class="btn sm" data-act="av-m" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${MN[m-1]} ${y}</b><button class="btn sm" data-act="av-m" data-v="1" aria-label="Следующий месяц">›</button><span class="spacer"></span><span class="sub num">${cnt} дн.</span></div>
+    <div class="cal">${cal}</div>
+    <p class="sub" style="margin:0">Нажмите на день недели в шапке — режим применится ко всем таким дням месяца. ${mine?'Обведены дни, где вы уже стоите в графике: если уберёте такой день, администратор это увидит.':'Обведены дни текущего периода графика.'}</p>`;
+}
 function openAvail(aid){
   const a=asById(aid);if(!a)return;
-  AV.month=AV.month||ymOf(UI.from);
-  M.show(()=>{
-    const av=S.avail[aid]||{};const[y,m]=AV.month.split('-').map(Number);
-    const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const off=(first.getDay()+6)%7;
-    let cal=WD.map((w,i)=>`<button class="wh" data-act="av-wd" data-v="${i}" title="Отметить все ${w} месяца">${w}</button>`).join('');
-    for(let i=0;i<off;i++)cal+=`<span class="dd out"></span>`;
-    let cnt=0;
-    for(let d=1;d<=days;d++){const ds=iso(new Date(y,m-1,d));const v=av[ds];if(v)cnt++;
-      const inP=ds>=UI.from&&ds<=UI.to;
-      cal+=`<button class="dd ${v||''} ${inP?'inp':''}" data-act="av-day" data-v="${ds}" aria-label="${ds} ${v?SH[v].l:'нет'}">${d}${v?`<small>${SH[v].s}</small>`:''}</button>`}
-    return{title:`<h2>${esc(a.name)}</h2><p class="sub">Когда может выйти на работу. Выберите режим и нажимайте на дни.</p>`,
-      body:`<div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div>
-      <div class="mnav"><button class="btn sm" data-act="av-m" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${MN[m-1]} ${y}</b><button class="btn sm" data-act="av-m" data-v="1" aria-label="Следующий месяц">›</button><span class="spacer"></span><span class="sub num">${cnt} дн.</span></div>
-      <div class="cal">${cal}</div>
-      <p class="sub" style="margin:0">Нажмите на день недели в шапке — режим применится ко всем таким дням месяца. Обведены дни текущего периода графика.</p>`,
-      foot:`<button class="btn sm danger" data-act="av-clear">Очистить месяц</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`};
-  });
-  const setD=(ds,v)=>{S.avail[aid]=S.avail[aid]||{};if(v==='none')delete S.avail[aid][ds];else S.avail[aid][ds]=v};
-  const monthDays=()=>{const[y,m]=AV.month.split('-').map(Number);const n=new Date(y,m,0).getDate();return Array.from({length:n},(_,i)=>iso(new Date(y,m-1,i+1)))};
-  ACT['av-brush']=b=>{AV.brush=b.dataset.v;M.refresh()};
-  ACT['av-day']=b=>{const ds=b.dataset.v;const cur=(S.avail[aid]||{})[ds];setD(ds,cur===AV.brush?'none':AV.brush);markAvail(aid);M.refresh()};
-  ACT['av-wd']=b=>{const w=+b.dataset.v;monthDays().filter(d=>wdOf(d)===w).forEach(d=>setD(d,AV.brush));markAvail(aid);M.refresh()};
-  ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);M.refresh()};
-  ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;monthDays().forEach(d=>setD(d,'none'));markAvail(aid);M.refresh()};
+  AV.month=AV.month||ymOf(UI.from);AV.aid=aid;AV.refresh=()=>M.refresh();
+  M.show(()=>({title:`<h2>${esc(a.name)}</h2><p class="sub">Когда может выйти на работу. Выберите режим и нажимайте на дни.</p>`,
+    body:availCal(aid),
+    foot:`<button class="btn sm danger" data-act="av-clear">Очистить месяц</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}));
 }
+function avSet(ds,v){const aid=AV.aid;S.avail[aid]=S.avail[aid]||{};if(v==='none')delete S.avail[aid][ds];else S.avail[aid][ds]=v}
+function avMonthDays(){const[y,m]=AV.month.split('-').map(Number);const n=new Date(y,m,0).getDate();return Array.from({length:n},(_,i)=>iso(new Date(y,m-1,i+1)))}
+const avEditable=ds=>isAdmin()||ds>=TODAY;
 
+/* ---------- экраны ассистента и врача ---------- */
+function myShifts(field,card){
+  const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
+    forEntries(d,(en,cl,ch)=>{if(en[field]===card)out.push({d,en,cl,ch})})}));
+  return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.en.shift]-SHO[y.en.shift]);
+}
+function shiftList(items,kind){
+  if(!items.length)return`<div class="boardwrap"><div class="empty-board"><h2>Ближайших смен нет</h2><p>${kind==='assistant'?'Как только администратор поставит вас в график, смены появятся здесь.':'Когда появится график, ваши смены будут здесь.'}</p></div></div>`;
+  let h='',last='';
+  items.forEach(({d,en,cl,ch})=>{
+    if(d!==last){if(last)h+='</div>';h+=`<div class="myday"><div class="mydate ${wdOf(d)>4?'we':''}"><b class="num">${fmt(d)}</b><span>${DAYF[wdOf(d)]}${d===TODAY?' · сегодня':''}</span></div>`;last=d}
+    const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
+    let who='';
+    if(kind==='assistant'){const av=(S.avail[en.assistantId]||{})[d];const ok=av&&(av==='day'||av===en.shift);
+      who=`<div class="mym">${esc(docName(en.doctorId))}</div>${ok?'':'<div class="mywarn">Этот день у вас не отмечен как рабочий</div>'}`}
+    else{const a=asById(en.assistantId);who=`<div class="mym">${a?'Ассистент: '+esc(a.name):'<span style="color:var(--bad)">Ассистент пока не назначен</span>'}</div>`}
+    h+=`<div class="myshift">${shChip(en.shift)}<div style="flex:1;min-width:0"><div class="myt"><b>${esc(shiftTime(en.shift))}</b> · ${esc(cl.name)}, кресло ${ch+1}</div>${who}${tg.length?`<div class="tags" style="margin-top:4px">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`:''}</div></div>`;
+  });
+  return`<div class="mylist">${h}</div></div>`;
+}
+function viewRole(){
+  const role=ROLE(),card=myCard();
+  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'],['all','Общий график']]:[['mine','Мои смены']];
+  if(!tabs.some(t=>t[0]===UI.rtab))UI.rtab='mine';
+  $('#tabs').innerHTML=tabs.length>1?tabs.map(([k,l])=>`<button class="tab" data-act="rtab" data-v="${k}" aria-current="${UI.rtab===k}">${l}</button>`).join(''):'';
+  const person=role==='assistant'?asById(card):docById(card);
+  if(!person)return`<div class="login"><h1>Карточка не найдена</h1><p class="sub">Администратор открыл вам доступ, но не привязал вас к карточке ${role==='assistant'?'ассистента':'врача'}. Сообщите ему.</p><div class="row"><button class="btn" data-act="logout">Выйти</button></div></div>`;
+  if(UI.rtab==='avail'){
+    AV.month=AV.month||ymOf(TODAY);AV.aid=card;AV.refresh=()=>render();
+    return`<div><h1>Когда могу работать</h1><p class="sub">${esc(person.name)} · выберите режим и нажимайте на дни. Всё сохраняется сразу.</p></div><div class="mycal">${availCal(card)}</div>`;
+  }
+  if(UI.rtab==='all')return viewBoard();
+  return`<div><h1>Мои смены</h1><p class="sub">${esc(person.name)} · с сегодняшнего дня</p></div>${shiftList(myShifts(role==='assistant'?'assistantId':'doctorId',card),role)}`;
+}
 /* ---------- generate ---------- */
 function openGen(){
   let sel=S.cfg.clinics.map(c=>c.id),over=false;
@@ -955,6 +1038,8 @@ function autofill(o){
 /* ---------- settings ---------- */
 function openSettings(){
   BK=null;
+  if(SUPA_ON&&!isAdmin()){M.show(()=>({title:'<h2>Настройки</h2>',body:`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вы вошли как <b>${esc(ME&&ME.login||'')}</b></span><span class="spacer"></span><button class="btn sm" data-act="logout">Выйти</button></div></div>
+    ${ROLE()==='assistant'?`<div><h3 class="sh3">Общий график</h3><div class="seg"><button data-act="orient" data-v="h" aria-pressed="${UI.orient!=='v'}">Даты по горизонтали</button><button data-act="orient" data-v="v" aria-pressed="${UI.orient==='v'}">Даты по вертикали</button></div></div>`:''}`,foot:'<button class="btn primary" data-act="close">Готово</button>'}));return}
   M.show(()=>{const st=SET();const sw=(id,on,title,desc,dis)=>`<label class="opt ${dis?'dis':''}"><input type="checkbox" id="${id}" ${on?'checked':''} ${dis?'disabled':''}><span><b>${title}</b><br><span class="sub">${desc}</span></span></label>`;
     return{title:`<h2>Настройки</h2>`,
     body:`<div><h3 class="sh3">Вид графика</h3><p class="sub" style="margin:0 0 8px">Запоминается в этом браузере.</p>
@@ -1170,7 +1255,9 @@ const ACT={
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
 };
+const ROLE_OK=new Set(['rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+  if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
 document.addEventListener('change',e=>{
   if(e.target.id==='pFrom'&&e.target.value){UI.from=e.target.value;if(UI.to<UI.from)UI.to=UI.from;MISS.clear();saveUI();render()}
@@ -1237,6 +1324,12 @@ ACT['bk-apply']=()=>{if(!BK)return;const d=BK.data;
   BK=null;MISS.clear();M.close();toast('Данные загружены из файла')};
 
 
+ACT['av-brush']=b=>{AV.brush=b.dataset.v;AV.refresh()};
+ACT['av-day']=b=>{const ds=b.dataset.v;if(!avEditable(ds))return;const cur=(S.avail[AV.aid]||{})[ds];avSet(ds,cur===AV.brush?'none':AV.brush);markAvail(AV.aid);AV.refresh()};
+ACT['av-wd']=b=>{const w=+b.dataset.v;avMonthDays().filter(d=>wdOf(d)===w&&avEditable(d)).forEach(d=>avSet(d,AV.brush));markAvail(AV.aid);AV.refresh()};
+ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);AV.refresh()};
+ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;avMonthDays().filter(avEditable).forEach(d=>avSet(d,'none'));markAvail(AV.aid);AV.refresh()};
+ACT['rtab']=b=>{UI.rtab=b.dataset.v;saveUI();render();window.scrollTo(0,0)};
 render();
 initStore();
 </script>
