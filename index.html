@@ -9,7 +9,7 @@
 <body>
 <title>График ассистентов</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,700&family=Unbounded:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,700&family=Unbounded:wght@500;600&display=swap" media="print" onload="this.media='all'">
 <style>
 /* Layout: верхняя полоса с разделами; «Расписание» = широкая доска кресла×даты + колонка ассистентов справа */
 :root{
@@ -303,7 +303,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 22:01'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 22:25'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -433,7 +433,7 @@ function costMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{
 function setStore(cls,text){const el=$('#store');el.className='store '+cls;el.lastElementChild.textContent=text}
 
 let LIVE=false,SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
-const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
+const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://unpkg.com/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://fastly.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
 function applyDoc(path,data){const[col,id]=path.split('/');
   if(col==='cfg'&&id==='main'){S.cfg=clone(data);mergePriv();normalize()}
   else if(col==='cfg'&&id==='private'){PRIV=clone(data||{});PRIV.doctors=PRIV.doctors||{};PRIV.assistants=PRIV.assistants||{};mergePriv();normalize()}
@@ -443,8 +443,13 @@ function applyDoc(path,data){const[col,id]=path.split('/');
 function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id];else if(col==='pub')delete S.pub[id]}
 async function initSupa(){
   Store.mode='supa';setStore('','Подключение…');
-  let ok=false;for(const src of SB_LIBS){try{await loadLib(src);ok=!!window.supabase;if(ok)break}catch(e){}}
-  if(!ok){setStore('warn','Нет связи');LOGIN_ERR='Нет связи с интернетом. Проверьте подключение и обновите страницу.';render();return}
+  const tmo=(p,ms)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),ms))]);
+  let ok=false;for(const src of SB_LIBS){try{await tmo(loadLib(src),9000);ok=!!window.supabase;if(ok)break}catch(e){}}
+  if(!ok){setStore('warn','Нет связи');LOGIN_ERR='Не загрузилась библиотека для связи с базой (jsdelivr.net / unpkg.com). Проверьте интернет. Если вы в России и интернет работает — возможно, эти адреса недоступны у вашего провайдера.';render();return}
+  // проверяем, отвечает ли сама база
+  try{const r=await tmo(fetch(SUPA.url+'/auth/v1/health',{headers:{apikey:SUPA.key}}),10000);if(!r.ok&&r.status>=500)throw new Error('down')}
+  catch(e){setStore('warn','Нет связи с базой');LOGIN_ERR='Не отвечает сервер базы данных (supabase.co). Если интернет работает — возможно, проект временно на паузе или адрес недоступен у вашего провайдера. Сообщите ответственному.';
+    SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});render();return}
   SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});
   SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;PENDING=false;ME=null;setStore('warn','Не выполнен вход');render()}});
   const{data}=await SB.auth.getSession();
