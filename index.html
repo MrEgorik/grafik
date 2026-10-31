@@ -321,13 +321,17 @@ body.has-box .top{position:static}
 .board.amap.dens-l td{min-width:60px;padding:9px 6px}
 .as.empty.offer{border-style:solid;border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:600}
 #tour{position:fixed;inset:0;z-index:60}
-#tour .t-hole{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgb(8 18 20/.62),0 0 0 3px var(--accent);transition:all .25s ease;pointer-events:none}
-#tour .t-tip{position:fixed;width:min(360px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border-radius:14px;padding:16px 16px 12px;box-shadow:0 18px 50px rgb(0 0 0/.35);transition:left .25s ease,top .25s ease}
+#tour .t-hole{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgb(8 18 20/.62),0 0 0 3px var(--accent);transition:left .42s cubic-bezier(.4,0,.2,1),top .42s cubic-bezier(.4,0,.2,1),width .42s cubic-bezier(.4,0,.2,1),height .42s cubic-bezier(.4,0,.2,1);pointer-events:none}
+#tour .t-tip{position:fixed;width:min(360px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border-radius:14px;padding:16px 16px 12px;box-shadow:0 18px 50px rgb(0 0 0/.35);transition:opacity .2s ease,transform .2s ease,left .42s cubic-bezier(.4,0,.2,1),top .42s cubic-bezier(.4,0,.2,1)}
+#tour .t-tip.fade{opacity:0;transform:translateY(6px)}
+#tour.in{animation:tourIn .3s ease both} #tour.out{animation:tourOut .25s ease both}
+@keyframes tourIn{from{opacity:0}to{opacity:1}} @keyframes tourOut{from{opacity:1}to{opacity:0}}
+.demotag{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%);z-index:61;background:var(--warn);color:#FFFFFF;font-weight:700;font-size:12px;padding:5px 12px;border-radius:999px;box-shadow:0 4px 14px rgb(0 0 0/.25);pointer-events:none;white-space:nowrap}
 #tour .t-tip h2{font-size:16px;margin:2px 0 6px}
 #tour .t-tip p{margin:0 0 12px;color:var(--ink);line-height:1.5}
 #tour .t-n{font-size:12px;color:var(--muted);font-weight:600}
 #tour .t-btns{display:flex;gap:6px;align-items:center}
-@media (prefers-reduced-motion:reduce){#tour .t-hole,#tour .t-tip{transition:none}}
+@media (prefers-reduced-motion:reduce){#tour .t-hole,#tour .t-tip{transition:none}#tour.in,#tour.out{animation:none}}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -354,7 +358,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:58'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 00:12'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -408,6 +412,7 @@ const live=get=>new Proxy({},{get:(t,k)=>{const x=get();return x?x[k]:undefined}
 const Store={
   mode:'local',db:null,dirty:new Set(),ver:{},timers:{},chains:{},readonly:false,sent:{},
   mark(path){
+    if(DEMO)return;
     if(this.readonly){toast('Нет прав на изменение этих данных');return}
     this.dirty.add(path);this.ver[path]=(this.ver[path]||0)+1;
     clearTimeout(this.timers[path]);this.timers[path]=setTimeout(()=>this.flush(path),450);
@@ -463,7 +468,8 @@ const isOwner=()=>ROLE()==='owner';
 const ACT_LATE=[];let PEOPLE_T=null;let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
 const orgName=id=>(ORGS.find(o=>o.id===id)||{}).name||'';
 const P=p=>LEGACY?p:ORG+':'+p; // путь в базе с префиксом организации
-const myCard=()=>ME&&ME.card_id||null;
+let DEMO=null; // пример на время обучения — ничего не сохраняется
+const myCard=()=>DEMO?DEMO.card:(ME&&ME.card_id||null);
 const markMonth=ym=>{if(!isAdmin())return;Store.mark('months/'+ym)};
 const markPub=ym=>{if(!isAdmin())return;Store.mark('pub/'+ym)};
 const markAvail=id=>{if(!isAdmin()&&!(ROLE()==='assistant'&&id===myCard()))return;Store.mark('avail/'+id)};
@@ -547,6 +553,7 @@ async function loadOrgData(){
     const full=(p.new&&p.new.path)||(p.old&&p.old.path);if(!full)return;
     if(LEGACY?full.includes(':'):!full.startsWith(ORG+':'))return;
     const path=LEGACY?full:full.slice(ORG.length+1);if(Store.dirty.has(path))return;
+    if(DEMO){DEMO.missed=true;return}
     if(p.eventType!=='DELETE'&&(Store.sent[path]||[]).includes(canon(p.new.data)))return; // это наше же сохранение
     if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
   }).subscribe();
@@ -623,7 +630,7 @@ async function doRegister(){
 /* уведомления */
 const seenKey=k=>'asst-seen-'+k+'-'+(MYID||'')+'-'+(ORG||'');
 const getSeen=k=>{try{return JSON.parse(localStorage.getItem(seenKey(k))||'null')}catch(e){return null}};
-const setSeen=(k,v)=>{try{localStorage.setItem(seenKey(k),JSON.stringify(v))}catch(e){}};
+const setSeen=(k,v)=>{if(DEMO)return;try{localStorage.setItem(seenKey(k),JSON.stringify(v))}catch(e){}};
 function conflicts(){return withSrc(false,()=>{const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
   forEntries(d,(en,cl)=>{const w=entryWarn(d,en);if(w&&!/нет навыка/.test(w))out.push({d,en,cl,w})})}));return out})}
 function shiftSig(){const role=ROLE(),card=myCard(),f=role==='assistant'?'assistantId':'doctorId';const m={};
@@ -1811,7 +1818,7 @@ document.addEventListener('wheel',e=>{const th=e.target.closest('.scrollbox thea
 const go=(o)=>()=>{Object.assign(UI,o);if(M.open)M.close();render()};
 const TOURS={
   admin:[
-    {t:'Добро пожаловать!',x:'Покажу, как устроена программа — это займёт пару минут. Листать можно кнопками ниже или стрелками на клавиатуре.'},
+    {t:'Добро пожаловать!',x:'Покажу, как устроена программа — это займёт пару минут. Чтобы было нагляднее, на время обучения я заполнил программу примером. Ваши данные не тронуты, а пример исчезнет в конце. Листать можно кнопками ниже или стрелками на клавиатуре.'},
     {sel:'#tabs',t:'Три раздела',x:'«Расписание» — графики. «Врачи» и «Ассистенты» — карточки людей: имена, навыки, кого к кому ставить.',pre:go({tab:'sched',mode:'board'})},
     {sel:'#addDoc',t:'Врачи',x:'Впишите ФИО и нажмите «Добавить врача». В карточке врача — его навыки (например, «Имплантация»), приоритетные ассистенты, кого не ставить, и кнопка «Пригласить в программу».',pre:go({tab:'doctors'})},
     {sel:'#addAs',t:'Ассистенты',x:'Так же заводятся ассистенты. В карточке — навыки, ставка (если включена в настройках), даты работы и ссылка-приглашение.',pre:go({tab:'assistants'})},
@@ -1833,10 +1840,10 @@ const TOURS={
     {sel:'[data-act=export]',t:'Скачать и печать',x:'PDF для печати, картинка для чатов или Word — в привычном виде «клиники столбцами, дни строками».'},
     {sel:'#bell',t:'Уведомления',x:'Новые сотрудники, отклики на клич, конфликты в графике, напоминания о сборе дат — всё здесь, со счётчиком.'},
     {sel:'[data-act=settings]',t:'Настройки',x:'Пользователи и приглашения по ссылке, организации, ставки, время смен, вид графика, резервная копия. Там же — кнопка, чтобы пройти это обучение заново.'},
-    {t:'Готово!',x:'Начните с базовой недели: добавьте клинику, кресла и врачей. Потом — ассистенты, «Сформировать» и «Автозаполнение». Удачи!',pre:go({tab:'sched',mode:'week'})},
+    {t:'Готово!',x:'Сейчас пример исчезнет, и вы вернётесь к своим данным. Начните с «Базовой недели»: добавьте клинику, кресла и врачей. Потом — ассистенты, «Сформировать» и «Автозаполнение». Удачи!',pre:go({tab:'sched',mode:'week'})},
   ],
   assistant:[
-    {t:'Добро пожаловать!',x:'Покажу, что здесь есть. Это займёт минуту.'},
+    {t:'Добро пожаловать!',x:'Покажу, что здесь есть. Это займёт минуту. На время обучения показан пример — ваши настоящие смены вернутся в конце.'},
     {sel:'[data-act=rtab][data-v=mine]',t:'Мои смены',x:'Ваши ближайшие смены: дата, время, клиника, кресло и врач.',pre:go({rtab:'mine'})},
     {sel:'[data-act=rtab][data-v=avail]',t:'Когда могу',x:'Здесь вы отмечаете дни, когда можете работать.',pre:go({rtab:'avail'})},
     {sel:'.brush',t:'Выберите режим',x:'«Весь день», «Утро» или «Вечер» — как кисточка. Потом нажимайте на дни в календаре. «Стереть» — убрать отметку.'},
@@ -1849,7 +1856,7 @@ const TOURS={
     {t:'Готово!',x:'Начните с вкладки «Когда могу» — отметьте дни, когда можете работать.',pre:go({rtab:'avail'})},
   ],
   doctor:[
-    {t:'Добро пожаловать!',x:'Коротко покажу, что здесь есть.'},
+    {t:'Добро пожаловать!',x:'Коротко покажу, что здесь есть. На время обучения показан пример — ваши настоящие смены вернутся в конце.'},
     {sel:'[data-act=rtab][data-v=mine]',t:'Мои смены',x:'Ваши ближайшие смены: дата, время, клиника, кресло и кто вам ассистирует.',pre:go({rtab:'mine'})},
     {sel:'[data-act=rtab][data-v=all]',t:'Общий график',x:'Расписание всей клиники — только просмотр. Ваши смены выделены цветом. Можно скачать или распечатать.',pre:go({rtab:'all'})},
     {sel:'#bell',t:'Уведомления',x:'Когда в ваших сменах что-то меняется — например, назначен ассистент — здесь появится уведомление.',pre:go({rtab:'mine'})},
@@ -1859,36 +1866,88 @@ const TOURS={
 let TOUR=null;
 const tourRole=()=>isAdmin()?'admin':ROLE()==='doctor'?'doctor':'assistant';
 const tourKey=()=>'asst-tour-'+tourRole()+'-'+(MYID||'local');
-function startTour(){TOUR={steps:TOURS[tourRole()],i:0};showStep(0)}
-function endTour(done){try{localStorage.setItem(tourKey(),'1')}catch(e){}TOUR=null;const o=$('#tour');if(o)o.remove();window.removeEventListener('resize',placeStep);window.removeEventListener('scroll',placeStep,true)}
-function findTarget(sel){if(!sel)return null;for(const q of sel.split(',')){const e=document.querySelector(q.trim());if(e&&e.offsetParent!==null){const r=e.getBoundingClientRect();if(r.width&&r.height)return e}}return null}
-function showStep(i){
-  if(!TOUR)return;const st=TOUR.steps;i=Math.max(0,Math.min(st.length-1,i));TOUR.i=i;const s=st[i];
-  if(s.pre)s.pre();
-  // шаг с отсутствующей областью (например, нет свободных смен) пропускаем, если это не первый/последний
-  let el=findTarget(s.sel);
-  if(s.sel&&!el&&i>0&&i<st.length-1){const dir=TOUR.dir||1;return showStep(i+dir)}
-  let o=$('#tour');if(!o){o=document.createElement('div');o.id='tour';o.innerHTML='<div class="t-hole"></div><div class="t-tip" role="dialog" aria-modal="true" aria-live="polite"></div>';document.body.appendChild(o);
-    window.addEventListener('resize',placeStep);window.addEventListener('scroll',placeStep,true)}
-  if(el)el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
-  const tip=o.querySelector('.t-tip');
-  tip.innerHTML=`<div class="t-n num">${i+1} из ${st.length}</div><h2>${esc(s.t)}</h2><p>${esc(s.x)}</p>
-    <div class="t-btns"><button class="btn sm ghost" data-tour="skip">${i===st.length-1?'Закрыть':'Пропустить'}</button><span class="spacer"></span>${i?'<button class="btn sm" data-tour="prev">Назад</button>':''}<button class="btn sm primary" data-tour="next">${i===st.length-1?'Начать работу':'Далее'}</button></div>`;
-  TOUR.el=el;placeStep();setTimeout(()=>tip.querySelector('[data-tour=next]').focus(),30);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* пример данных для обучения */
+function demoData(){
+  const t0=addDays(TODAY,-wdOf(TODAY)),D=n=>addDays(t0,n);
+  const tags=[{id:'t_hir',name:'Хирургия'},{id:'t_imp',name:'Имплантация'},{id:'t_ort',name:'Ортопедия'},{id:'t_ter',name:'Терапия'},{id:'t_otd',name:'Ортодонтия'},{id:'t_det',name:'Детский приём'}];
+  const doctors=[['x_d1','Смирнов А.В.','Хирург-имплантолог',['t_hir','t_imp'],['x_a1'],[]],['x_d2','Кузнецова Е.П.','Терапевт',['t_ter'],[],['x_a5']],['x_d3','Орлов Д.С.','Ортопед',['t_ort'],['x_a3'],[]],
+    ['x_d4','Лебедева М.И.','Ортодонт',['t_otd'],[],[]],['x_d5','Павлова О.Н.','Детский стоматолог',['t_det','t_ter'],['x_a6'],[]],['x_d6','Ефимов И.Р.','Ортопед',['t_ort'],[],[]]]
+    .map(([id,name,spec,tg,prio,block])=>({id,name,spec,tags:tg,prio,block}));
+  const assistants=[['x_a1','Волкова Анна',['t_hir','t_imp','t_ort']],['x_a2','Никитина Ольга',['t_ter','t_det']],['x_a3','Соколова Мария',['t_ort','t_ter']],['x_a4','Морозова Ирина',['t_hir','t_ter']],['x_a5','Фёдорова Дарья',['t_otd','t_ter']],['x_a6','Егорова Светлана',['t_det','t_ter','t_otd']],['x_a7','Белова Дарья',['t_ter']]]
+    .map(([id,name,tg])=>({id,name,tags:tg}));
+  const T=(d,s)=>({doctorId:d,shift:s});
+  const clinics=[{id:'x_c1',name:'Филиал на Ленина',chairs:3,template:{'0-0':[T('x_d1','day')],'0-2':[T('x_d1','am'),T('x_d3','pm')],'0-4':[T('x_d1','day')],'1-0':[T('x_d2','day')],'1-1':[T('x_d2','day')],'1-3':[T('x_d2','am'),T('x_d6','pm')],'1-5':[T('x_d2','am')],'2-1':[T('x_d4','pm')],'2-3':[T('x_d4','pm')]}},
+    {id:'x_c2',name:'Филиал на Садовой',chairs:2,template:{'0-0':[T('x_d3','day')],'0-1':[T('x_d3','am'),T('x_d6','pm')],'0-3':[T('x_d3','day')],'0-4':[T('x_d3','am'),T('x_d5','pm')],'1-1':[T('x_d5','day')],'1-2':[T('x_d5','day')],'1-5':[T('x_d4','am')]}}];
+  const pat={x_a1:{0:'day',2:'day',4:'day',1:'am'},x_a2:{0:'day',1:'day',3:'am',5:'am'},x_a3:{0:'day',1:'am',3:'day',4:'day'},x_a4:{1:'day',2:'day',3:'pm',4:'pm'},x_a5:{1:'pm',2:'day',3:'pm',5:'am'},x_a6:{1:'day',2:'day',4:'pm'},x_a7:{0:'pm',2:'pm',4:'am'}};
+  const avail={};Object.keys(pat).forEach(a=>{avail[a]={};for(let i=0;i<28;i++){const d=D(i),w=wdOf(d);if(pat[a][w]!==undefined&&!(a==='x_a7'&&i>13))avail[a][d]=pat[a][w]}});
+  const months={};let n=0;
+  for(let i=0;i<14;i++){const d=D(i),w=wdOf(d);const day={};clinics.forEach(c=>{day[c.id]={};for(let ch=0;ch<c.chairs;ch++){const t=c.template[ch+'-'+w]||[];if(t.length)day[c.id][ch]=t.map(e=>({id:'x_e'+(++n),doctorId:e.doctorId,shift:e.shift,tags:[...doctors.find(x=>x.id===e.doctorId).tags],assistantId:null}))}});(months[ymOf(d)]=months[ymOf(d)]||{})[d]=day}
+  const cfg={tags,doctors,assistants,clinics,collect:[{id:'x_k1',from:D(14),to:D(27),deadline:addDays(TODAY,3)}],calls:[],settings:{rates:false,cheap:false,showTags:true,useTimes:true,times:{am:'9-14',pm:'15-21',day:'9-21'}}};
+  return{cfg,avail,months,t0};
 }
+function enterDemo(){
+  DEMO={S:clone({cfg:S.cfg,avail:S.avail,months:S.months,pub:S.pub,offers:S.offers}),UI:clone(UI),PRIV:clone(PRIV),card:null,missed:false};
+  const d=demoData();S.cfg=d.cfg;S.avail=d.avail;S.months=d.months;S.pub={};S.offers={};normalize();
+  UI.from=d.t0;UI.to=addDays(d.t0,13);UI.mode='board';UI.tab='sched';UI.rtab='mine';
+  // расставить ассистентов автозаполнением, затем оставить несколько пустых мест и один конфликт
+  withSrc(false,()=>autofill({overwrite:true,allowMissing:false}));MISS.clear();
+  const ents=[];withSrc(false,()=>range(UI.from,UI.to).forEach(dd=>forEntries(dd,(en,cl,ch)=>ents.push({d:dd,en,cl,ch}))));
+  const fill=ents.filter(x=>x.en.assistantId);fill.slice(-4).forEach(x=>x.en.assistantId=null);
+  const cf=ents.find(x=>x.en.assistantId&&x.d>=TODAY);if(cf){const a=S.cfg.assistants.find(a=>!(S.avail[a.id]||{})[cf.d]&&a.id!==cf.en.assistantId);if(a)cf.en.assistantId=a.id}
+  // опубликована первая неделя
+  range(UI.from,addDays(UI.from,6)).forEach(dd=>{const m=(S.months[ymOf(dd)]||{})[dd];if(m)(S.pub[ymOf(dd)]=S.pub[ymOf(dd)]||{})[dd]=clone(m)});
+  // клич на пустые смены с одним откликом
+  const empty=ents.filter(x=>!x.en.assistantId&&x.d>=TODAY).slice(0,3);
+  if(empty.length){S.cfg.calls=[{id:'x_call',at:new Date().toISOString(),note:'Нужны люди на эти дни',items:empty.map(x=>({d:x.d,eid:x.en.id,cid:x.cl.id,ch:x.ch,shift:x.en.shift,doc:docName(x.en.doctorId),clinic:x.cl.name}))}];S.offers.x_a7={[empty[0].en.id]:new Date().toISOString()}}
+  DEMO.card=ROLE()==='doctor'?'x_d1':'x_a1';
+  // ассистенту в примере нужны смены в опубликованном графике
+  if(ROLE()==='assistant'){let k=0;Object.values(S.pub).forEach(m=>Object.values(m).forEach(day=>Object.values(day).forEach(c=>Object.values(c).forEach(arr=>arr.forEach(en=>{if(k<3&&en.assistantId&&en.assistantId!=='x_a1'){en.assistantId='x_a1';k++}})))))}
+  let b=$('#demoTag');if(!b){b=document.createElement('div');b.id='demoTag';b.className='demotag';b.textContent='Пример для обучения — ничего не сохраняется';document.body.appendChild(b)}
+}
+function leaveDemo(){
+  if(!DEMO)return;const d=DEMO;DEMO=null;
+  S.cfg=d.S.cfg;S.avail=d.S.avail;S.months=d.S.months;S.pub=d.S.pub;S.offers=d.S.offers;PRIV=d.PRIV;Object.assign(UI,d.UI);normalize();MISS.clear();
+  $('#demoTag')?.remove();render();
+  if(SUPA_ON&&AUTHED&&d.missed)loadOrgData();
+}
+function startTour(){if(TOUR)return;enterDemo();render();TOUR={steps:TOURS[tourRole()],i:0,dir:1,busy:false};showStep(0)}
+function endTour(){try{localStorage.setItem(tourKey(),'1')}catch(e){}TOUR=null;const o=$('#tour');
+  if(o){o.classList.add('out');setTimeout(()=>o.remove(),REDUCED?0:260)}
+  window.removeEventListener('resize',placeStep);window.removeEventListener('scroll',placeStep,true);leaveDemo()}
+function findTarget(sel){if(!sel)return null;for(const q of sel.split(',')){const e=document.querySelector(q.trim());if(e&&e.offsetParent!==null){const r=e.getBoundingClientRect();if(r.width&&r.height)return e}}return null}
 function placeStep(){
   const o=$('#tour');if(!o||!TOUR)return;const hole=o.querySelector('.t-hole'),tip=o.querySelector('.t-tip');
   const el=TOUR.el&&document.body.contains(TOUR.el)?TOUR.el:null;const W=innerWidth,H=innerHeight,pad=6;
-  if(!el){hole.style.cssText=`left:${W/2}px;top:${H/2}px;width:0;height:0`;tip.style.cssText=`left:${Math.max(12,(W-tip.offsetWidth)/2)}px;top:${Math.max(12,(H-tip.offsetHeight)/2)}px`;return}
+  if(!el){hole.style.cssText=`left:${W/2}px;top:${H/2}px;width:0;height:0`;tip.style.left=Math.max(12,(W-tip.offsetWidth)/2)+'px';tip.style.top=Math.max(12,(H-tip.offsetHeight)/2)+'px';return}
   const r=el.getBoundingClientRect();const x=Math.max(4,r.left-pad),y=Math.max(4,r.top-pad),w=Math.min(W-8,r.width+pad*2),h=Math.min(H-8,r.height+pad*2);
   hole.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
   const tw=tip.offsetWidth,th=tip.offsetHeight;let tx=Math.min(Math.max(12,x+w/2-tw/2),W-tw-12),ty=y+h+12;
-  if(ty+th>H-12)ty=y-th-12;if(ty<12)ty=Math.min(H-th-12,Math.max(12,y+h/2-th/2)),tx=x+w+12+tw<W?x+w+12:Math.max(12,x-tw-12);
-  tip.style.cssText=`left:${tx}px;top:${ty}px`;
+  if(ty+th>H-12)ty=y-th-12;if(ty<12){ty=Math.min(H-th-12,Math.max(12,y+h/2-th/2));tx=x+w+12+tw<W?x+w+12:Math.max(12,x-tw-12)}
+  tip.style.left=tx+'px';tip.style.top=ty+'px';
+}
+async function showStep(i){
+  if(!TOUR||TOUR.busy)return;const st=TOUR.steps;i=Math.max(0,Math.min(st.length-1,i));TOUR.busy=true;
+  let o=$('#tour');const first=!o;
+  if(first){o=document.createElement('div');o.id='tour';o.className='in';o.innerHTML='<div class="t-hole"></div><div class="t-tip fade" role="dialog" aria-modal="true" aria-live="polite"></div>';document.body.appendChild(o);
+    window.addEventListener('resize',placeStep);window.addEventListener('scroll',placeStep,true)}
+  const tip=o.querySelector('.t-tip');
+  if(!first){tip.classList.add('fade');await sleep(REDUCED?0:170)}
+  let s,el;
+  for(;;){s=st[i];if(s.pre)s.pre();el=findTarget(s.sel);
+    if(s.sel&&!el&&i>0&&i<st.length-1){i+=TOUR.dir||1;continue}break}
+  TOUR.i=i;
+  if(el){el.scrollIntoView({block:'center',inline:'nearest',behavior:REDUCED?'auto':'smooth'});await sleep(REDUCED?0:420)}
+  if(!TOUR){return}
+  tip.innerHTML=`<div class="t-n num">${i+1} из ${st.length}</div><h2>${esc(s.t)}</h2><p>${esc(s.x)}</p>
+    <div class="t-btns"><button class="btn sm ghost" data-tour="skip">${i===st.length-1?'Закрыть':'Пропустить'}</button><span class="spacer"></span>${i?'<button class="btn sm" data-tour="prev">Назад</button>':''}<button class="btn sm primary" data-tour="next">${i===st.length-1?'Начать работу':'Далее'}</button></div>`;
+  TOUR.el=el;placeStep();await sleep(REDUCED?0:first?120:300);tip.classList.remove('fade');TOUR.busy=false;
+  setTimeout(()=>tip.querySelector('[data-tour=next]')?.focus({preventScroll:true}),40);
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-tour]');if(!b||!TOUR)return;const a=b.dataset.tour;
-  if(a==='skip'){endTour();return}if(a==='next'){TOUR.dir=1;if(TOUR.i>=TOUR.steps.length-1)endTour(true);else showStep(TOUR.i+1)}if(a==='prev'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
-document.addEventListener('keydown',e=>{if(!TOUR)return;if(e.key==='Escape'){e.stopPropagation();endTour()}else if(e.key==='ArrowRight'){TOUR.dir=1;TOUR.i>=TOUR.steps.length-1?endTour(true):showStep(TOUR.i+1)}else if(e.key==='ArrowLeft'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
+  if(a==='skip'){endTour();return}if(TOUR.busy)return;if(a==='next'){TOUR.dir=1;if(TOUR.i>=TOUR.steps.length-1)endTour();else showStep(TOUR.i+1)}if(a==='prev'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
+document.addEventListener('keydown',e=>{if(!TOUR)return;if(e.key==='Escape'){e.stopPropagation();endTour()}else if(TOUR.busy)return;else if(e.key==='ArrowRight'){TOUR.dir=1;TOUR.i>=TOUR.steps.length-1?endTour():showStep(TOUR.i+1)}else if(e.key==='ArrowLeft'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
 function maybeTour(){try{if(localStorage.getItem(tourKey()))return}catch(e){return}if(TOUR||M.open)return;setTimeout(()=>{if(!TOUR&&!M.open)startTour()},700)}
 ACT_LATE.push(()=>{ACT['tour']=()=>{if(M.open)M.close();startTour()}});
 ACT_LATE.forEach(f=>f());
