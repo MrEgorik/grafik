@@ -287,7 +287,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .amap .aname:hover{color:var(--accent)}
 .lg.ok2{background:var(--ok-soft)} .lg.tight2{background:var(--warn-soft)} .lg.bad2{background:var(--bad-soft)}
 .seg{flex-wrap:wrap}
-.boardwrap.scrollbox{overflow:auto;max-height:max(320px,calc(100vh - 100px));max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 100px));overscroll-behavior:contain}
+.boardwrap.scrollbox{overflow:auto;max-height:max(320px,calc(100vh - 100px));max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 100px));overscroll-behavior-x:contain;overscroll-behavior-y:auto}
 body.has-box .top{position:static}
 .scrollbox .board thead th{position:sticky;top:0;z-index:2}
 .scrollbox .board.vert thead tr:nth-child(2) th{top:37px}
@@ -364,7 +364,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 00:55'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 00:56'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
