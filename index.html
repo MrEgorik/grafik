@@ -298,6 +298,27 @@ body.has-box .top{position:static}
 .zoom{display:inline-flex;align-items:center;gap:2px;background:var(--sunk);border-radius:9px;padding:2px}
 .zoom .btn{min-width:30px;justify-content:center}
 .zoom .btn.ghost{min-width:52px;color:var(--ink)}
+.seg.dens button{padding:5px 10px;font-size:12.5px}
+/* плотная сетка */
+.board.dens-c td.c{width:118px;min-width:118px;padding:2px}
+.board.dens-c .ent{padding:3px 5px;gap:3px;border-radius:6px}
+.board.dens-c .ent+.ent{margin-top:3px}
+.board.dens-c .ent .tags{display:none}
+.board.dens-c .ent .h{gap:4px}
+.board.dens-c .ent .doc{font-size:12px}
+.board.dens-c .as{padding:2px 5px;font-size:11.5px;border-radius:5px}
+.board.dens-c .sh{min-width:17px;height:16px;font-size:10px;padding:0 3px}
+.board.dens-c .addent{padding:0;margin-top:2px;font-size:11px;line-height:13px;opacity:.35}
+.board.dens-c .lab{min-width:56px;padding:4px 6px;font-size:11px}
+.board.dens-c thead th{padding:4px 6px} .board.dens-c thead th .d{font-size:13px}
+.board.dens-c .sd{margin-top:3px;font-size:10px;padding:1px 4px}
+.board.dens-c tr.cl td{padding:3px 8px}
+.board.dens-c.vert thead tr:nth-child(2) th{top:27px}
+.board.amap.dens-c td{min-width:34px;padding:3px 2px;font-size:11.5px}
+.board.amap.dens-c th.lab{min-width:120px}
+/* просторная сетка */
+.board.dens-l td.c{width:214px;min-width:214px;padding:7px}
+.board.amap.dens-l td{min-width:60px;padding:9px 6px}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -324,7 +345,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:33'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 23:36'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -875,9 +896,11 @@ function sdBadge(d){if(!editing()||!S.cfg.assistants.length)return'';const x=sup
 const ZOOMS=[.6,.7,.8,.9,1,1.15,1.3,1.5];
 const zoomVal=()=>ZOOMS.includes(UI.zoom)?UI.zoom:1;
 const zoomCss=()=>zoomVal()===1?'':`zoom:${zoomVal()}`;
-const zoomCtl=()=>`<div class="zoom" role="group" aria-label="Масштаб сетки"><button class="btn sm" data-act="zoom" data-v="-1" aria-label="Мельче" ${zoomVal()===ZOOMS[0]?'disabled':''}>−</button><button class="btn sm ghost num" data-act="zoom" data-v="0" title="Обычный размер">${Math.round(zoomVal()*100)}%</button><button class="btn sm" data-act="zoom" data-v="1" aria-label="Крупнее" ${zoomVal()===ZOOMS[ZOOMS.length-1]?'disabled':''}>+</button></div>`;
+const densCls=()=>UI.dens==='c'?'dens-c':UI.dens==='l'?'dens-l':'';
+const densCtl=()=>`<div class="seg dens" role="group" aria-label="Плотность сетки">${[['c','Плотно'],['n','Обычно'],['l','Просторно']].map(([k,l])=>`<button data-act="dens" data-v="${k}" aria-pressed="${(UI.dens||'n')===k}">${l}</button>`).join('')}</div>`;
+const zoomCtl=()=>densCtl()+`<div class="zoom" role="group" aria-label="Масштаб сетки"><button class="btn sm" data-act="zoom" data-v="-1" aria-label="Мельче" ${zoomVal()===ZOOMS[0]?'disabled':''}>−</button><button class="btn sm ghost num" data-act="zoom" data-v="0" title="Обычный размер">${Math.round(zoomVal()*100)}%</button><button class="btn sm" data-act="zoom" data-v="1" aria-label="Крупнее" ${zoomVal()===ZOOMS[ZOOMS.length-1]?'disabled':''}>+</button></div>`;
 function boardH(dates,cls){
-  let h=`<table class="board" style="${zoomCss()}"><thead><tr><th class="lab">Кресло</th>`;
+  let h=`<table class="board ${densCls()}" style="${zoomCss()}"><thead><tr><th class="lab">Кресло</th>`;
   dates.forEach(d=>{const w=wdOf(d);h+=`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div>${sdBadge(d)}</th>`});
   h+=`</tr></thead><tbody>`;
   cls.forEach(cl=>{
@@ -892,7 +915,7 @@ function boardH(dates,cls){
 }
 // даты по вертикали: строки = дни, столбцы = кресла по клиникам
 function boardV(dates,cls){
-  let h=`<table class="board vert" style="${zoomCss()}"><thead><tr><th class="lab" rowspan="2">Дата</th>`;
+  let h=`<table class="board vert ${densCls()}" style="${zoomCss()}"><thead><tr><th class="lab" rowspan="2">Дата</th>`;
   cls.forEach(cl=>{h+=`<th class="clh" colspan="${cl.chairs}">${esc(cl.name)}</th>`});
   h+=`</tr><tr>`;
   cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<th class="chh ${ch===0?'first':''}">Кресло ${ch+1}</th>`});
@@ -944,7 +967,7 @@ function viewBoard(){
 function viewAvailMap(){
   const dates=range(UI.from,UI.to);const as=S.cfg.assistants.slice().sort(byName);
   const sd=dates.map(supplyDemand);
-  let h=`<table class="board amap" style="${zoomCss()}"><thead><tr><th class="lab">Ассистент</th>${dates.map(d=>{const w=wdOf(d);return`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`}).join('')}</tr>
+  let h=`<table class="board amap ${densCls()}" style="${zoomCss()}"><thead><tr><th class="lab">Ассистент</th>${dates.map(d=>{const w=wdOf(d);return`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`}).join('')}</tr>
     <tr class="sumr"><th class="lab">Утро<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.am,x.nAm)}">${x.am}${x.nAm?' / '+x.nAm:''}</td>`).join('')}</tr>
     <tr class="sumr"><th class="lab">Вечер<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.pm,x.nPm)}">${x.pm}${x.nPm?' / '+x.nPm:''}</td>`).join('')}</tr></thead><tbody>`;
   as.forEach(a=>{const av=S.avail[a.id]||{};const n=dates.filter(d=>av[d]).length;
@@ -1607,6 +1630,7 @@ const ACT={
   'inv-skip':async()=>{INV_STATE=null;INV_HAS_SESSION=false;dropInviteParam();const{data}=await SB.auth.getSession();if(data&&data.session)await afterLogin();else render()},
   'inv-logout':async()=>{await SB.auth.signOut();INV_HAS_SESSION=false;AUTHED=false;ME=null;render()},
   publish:()=>openPublish(),
+  dens:b=>{UI.dens=b.dataset.v;saveUI();render()},
   zoom:b=>{const v=+b.dataset.v;const i=ZOOMS.indexOf(zoomVal());UI.zoom=v===0?1:ZOOMS[Math.max(0,Math.min(ZOOMS.length-1,i+v))];saveUI();
     const box=document.querySelector('.scrollbox');const fx=box?box.scrollLeft/Math.max(1,box.scrollWidth):0,fy=box?box.scrollTop/Math.max(1,box.scrollHeight):0;
     render();const nb=document.querySelector('.scrollbox');if(nb){nb.scrollLeft=fx*nb.scrollWidth;nb.scrollTop=fy*nb.scrollHeight}},
@@ -1617,7 +1641,7 @@ const ACT={
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
 };
-const ROLE_OK=new Set(['zoom','bell-go','pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
+const ROLE_OK=new Set(['dens','zoom','bell-go','pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
