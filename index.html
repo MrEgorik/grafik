@@ -260,6 +260,15 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .urow select{max-width:100%}
 .orgname{font-weight:600;color:var(--muted);font-size:13px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .orgname select{font-weight:600;padding:5px 8px;max-width:220px}
+.pw{position:relative;display:block}
+.pw input{width:100%;padding-right:42px}
+.eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--muted);width:34px;height:30px;border-radius:6px;display:grid;place-items:center}
+.eye.on{color:var(--accent)} .eye:hover{background:var(--sunk)}
+.loginf input[type=text],.loginf .pw input{width:100%}
+#invLink{width:100%;font-size:13px}
+.bell{position:relative;border:1px solid var(--line);background:var(--surface);width:34px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--ink)}
+.bell .badge{position:absolute;top:-6px;right:-7px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#FFFFFF;font-size:11px;font-weight:700;display:grid;place-items:center;line-height:1}
+.cand.bwarn{border-left:3px solid var(--warn)}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -275,6 +284,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
   <span class="orgname" id="orgname"></span>
   <nav class="tabs" id="tabs"></nav>
   <div class="store" id="store"><b></b><span>Загрузка…</span></div>
+  <button class="bell" data-act="bell" id="bell" hidden aria-label="Уведомления"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="badge num" id="bellN" hidden></span></button>
   <button class="btn sm" data-act="settings">Настройки</button>
 </header>
 <main id="main"></main>
@@ -378,7 +388,7 @@ function mergePriv(){S.cfg.doctors.forEach(d=>Object.assign(d,(PRIV.doctors||{})
 const ROLE=()=>SUPA_ON?(ME&&ME.role)||'none':'admin';
 const isAdmin=()=>['admin','owner'].includes(ROLE());
 const isOwner=()=>ROLE()==='owner';
-let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
+const ACT_LATE=[];let PEOPLE_T=null;let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
 const orgName=id=>(ORGS.find(o=>o.id===id)||{}).name||'';
 const P=p=>LEGACY?p:ORG+':'+p; // путь в базе с префиксом организации
 const myCard=()=>ME&&ME.card_id||null;
@@ -414,6 +424,11 @@ async function initSupa(){
   SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});
   SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;PENDING=false;ME=null;setStore('warn','Не выполнен вход');render()}});
   const{data}=await SB.auth.getSession();
+  if(INVITE){await loadInvite();
+    if(data&&data.session&&INV_STATE==='ok'){INV_HAS_SESSION=true;const ur=await SB.auth.getUser();ME={login:emailToLogin(ur.data?.user?.email)}}
+    if(!(data&&data.session)||INV_STATE==='ok'){setStore('warn','Регистрация');render();return}
+    INV_STATE=null;dropInviteParam();
+  }
   if(!data||!data.session){setStore('warn','Не выполнен вход');render();return}
   await afterLogin();
 }
@@ -444,7 +459,8 @@ async function loadOrgData(){
   // перенос служебных полей из общего документа в закрытый (один раз)
   if(isAdmin()&&cfgRow&&((cfgRow.data.doctors||[]).some(d=>d.prio||d.block)||(cfgRow.data.assistants||[]).some(a=>PRIV_A.some(k=>a[k]!==undefined))))markCfg();
   if(!isAdmin())UI.rtab=UI.rtab||'mine';
-  MISS.clear();
+  MISS.clear();loadPeople();
+  if(!PEOPLE_T&&isAdmin())PEOPLE_T=setInterval(()=>{if(document.visibilityState==='visible')loadPeople()},60000);
   if(LIVE)return setStore('on',isAdmin()?'Сохраняется в базе':'Подключено'),render();
   LIVE=true;
   SB.channel('docs-live').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
@@ -455,18 +471,38 @@ async function loadOrgData(){
   }).subscribe();
   setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();
 }
+const pwField=(id,label,ac)=>`<label class="f">${label}<span class="pw"><input type="password" id="${id}" autocomplete="${ac}" required><button type="button" class="eye" data-act="pw-eye" data-v="${id}" aria-label="Показать пароль" title="Показать пароль"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>`;
+const INVITE=(()=>{try{return new URLSearchParams(location.search).get('invite')}catch(e){return null}})();
+let INV=null,INV_STATE=INVITE?'loading':null,INV_HAS_SESSION=false; // loading | ok | bad
+function dropInviteParam(){try{const u=new URL(location.href);u.searchParams.delete('invite');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch(e){}}
+async function loadInvite(){
+  const r=await SB.rpc('invite_info',{t:INVITE});
+  if(r.error||!r.data){INV_STATE='bad';INV=null}else{INV=r.data;INV_STATE='ok'}
+}
+function viewInvite(){
+  if(INV_STATE==='loading'||!SB)return`<div class="login"><h1>Приглашение</h1><p class="sub">Проверяю ссылку…</p></div>`;
+  if(INV_STATE==='bad')return`<div class="login"><h1>Ссылка не действует</h1><p class="sub">Приглашение уже использовано или устарело. Попросите у ответственного новую ссылку.</p><div class="row"><button class="btn" data-act="inv-skip">Ко входу</button></div></div>`;
+  if(INV_HAS_SESSION)return`<div class="login"><h1>Приглашение</h1><p>Сейчас на этом устройстве выполнен вход как <b>${esc(ME&&ME.login||'')}</b>.</p><p class="sub">Чтобы зарегистрироваться по приглашению, нужно выйти.</p><div class="row"><button class="btn primary" data-act="inv-logout">Выйти и зарегистрироваться</button><button class="btn" data-act="inv-skip">Остаться</button></div></div>`;
+  const R={assistant:'ассистент',doctor:'врач',admin:'ответственный за расписание'}[INV.role]||'';
+  return`<div class="login"><h1>Регистрация</h1><p class="sub">${esc(INV.org||'')} · ${R}</p>
+  <form id="inviteForm" class="loginf">
+  <label class="f">Имя и фамилия<input type="text" id="rgName" autocomplete="name" value="${esc(INV.card_name||'')}" required></label>
+  <label class="f">Логин — придумайте, латиницей<input type="text" id="lgLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="volkova" required></label>
+  ${pwField('lgPass','Пароль — не короче 6 символов','new-password')}
+  ${pwField('lgPass2','Повторите пароль','new-password')}
+  ${LOGIN_ERR?`<p class="lgerr">${esc(LOGIN_ERR)}</p>`:''}
+  <button class="btn primary ${LOGIN_BUSY?'busy':''}">${LOGIN_BUSY?'Подождите…':'Зарегистрироваться'}</button></form>
+  <p class="sub">Запомните логин и пароль — по ним вы будете входить в программу.</p></div>`;
+}
 function viewLogin(){
-  const reg=AUTH_TAB==='reg';
-  return`<div class="login"><h1>${reg?'Регистрация':'Вход'}</h1><p class="sub">График ассистентов</p>
-  <div class="seg"><button type="button" data-act="auth-tab" data-v="in" aria-pressed="${!reg}">Вход</button><button type="button" data-act="auth-tab" data-v="reg" aria-pressed="${reg}">Регистрация</button></div>
+  if(INV_STATE)return viewInvite();
+  return`<div class="login"><h1>Вход</h1><p class="sub">График ассистентов</p>
   <form id="loginForm" class="loginf">
-  ${reg?`<label class="f">Код клиники — спросите у ответственного<input type="text" id="rgCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="A1B2C3" required></label><label class="f">Имя и фамилия<input type="text" id="rgName" autocomplete="name" placeholder="Волкова Анна" required></label>`:''}
-  <label class="f">Логин${reg?' — придумайте, латиницей':''}<input type="text" id="lgLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="${reg?'volkova':''}" required></label>
-  <label class="f">Пароль${reg?' — не короче 6 символов':''}<input type="password" id="lgPass" autocomplete="${reg?'new-password':'current-password'}" required></label>
-  ${reg?`<label class="f">Повторите пароль<input type="password" id="lgPass2" autocomplete="new-password" required></label>`:''}
+  <label class="f">Логин<input type="text" id="lgLogin" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+  ${pwField('lgPass','Пароль','current-password')}
   ${LOGIN_ERR?`<p class="lgerr">${esc(LOGIN_ERR)}</p>`:''}${LOGIN_OK?`<p class="okline" style="margin:0">${esc(LOGIN_OK)}</p>`:''}
-  <button class="btn primary ${LOGIN_BUSY?'busy':''}" ${SB?'':'disabled'}>${LOGIN_BUSY?'Подождите…':reg?'Зарегистрироваться':'Войти'}</button></form>
-  <p class="sub">${reg?'После регистрации администратор должен открыть вам доступ.':'Нет логина? Откройте вкладку «Регистрация».'}</p></div>`;
+  <button class="btn primary ${LOGIN_BUSY?'busy':''}" ${SB?'':'disabled'}>${LOGIN_BUSY?'Подождите…':'Войти'}</button></form>
+  <p class="sub">Нет логина? Попросите у ответственного вашей клиники ссылку-приглашение.</p></div>`;
 }
 function viewPending(){
   const blocked=ME&&ME.role==='blocked';
@@ -486,21 +522,115 @@ async function doLogin(){
   await afterLogin();
 }
 async function doRegister(){
-  if(!SB||LOGIN_BUSY)return;
-  const name=$('#rgName').value.trim(),login=$('#lgLogin').value.trim().toLowerCase(),p1=$('#lgPass').value,p2=$('#lgPass2').value,code=$('#rgCode').value.trim().toUpperCase();
-  const restore=keepVals(['rgCode','rgName','lgLogin']);
-  const fail=t=>{LOGIN_ERR=t;LOGIN_OK='';render();restore()};
+  if(!SB||LOGIN_BUSY||!INV)return;
+  const name=$('#rgName').value.trim(),login=$('#lgLogin').value.trim().toLowerCase(),p1=$('#lgPass').value,p2=$('#lgPass2').value;
+  const restore=keepVals(['rgName','lgLogin']);
+  const fail=t=>{LOGIN_ERR=t;render();restore()};
+  if(!name)return fail('Укажите имя и фамилию');
   if(!LOGIN_RE.test(login))return fail('Логин: от 3 до 30 символов, латинские буквы, цифры, точка, дефис или _');
   if(p1.length<6)return fail('Пароль должен быть не короче 6 символов');
   if(p1!==p2)return fail('Пароли не совпадают');
   LOGIN_BUSY=true;LOGIN_ERR='';render();restore();
-  const{data,error}=await SB.auth.signUp({email:loginToEmail(login),password:p1,options:{data:{name,code}}});
+  const{data,error}=await SB.auth.signUp({email:loginToEmail(login),password:p1,options:{data:{name,invite:INVITE}}});
   LOGIN_BUSY=false;
   if(error){const m=error.message||'';
-    return fail(/registered|exists/i.test(m)?'Такой логин уже занят, придумайте другой':/not allowed|disabled/i.test(m)?'Регистрация сейчас выключена администратором':/invalid/i.test(m)?'Этот логин не подошёл, попробуйте другой':'Не удалось зарегистрироваться: '+m)}
-  if(!data.session){AUTH_TAB='in';LOGIN_OK='Регистрация прошла, но вход пока невозможен: в настройках базы включено подтверждение почты. Сообщите администратору.';render();return}
+    return fail(/registered|exists/i.test(m)?'Такой логин уже занят, придумайте другой':/invalid/i.test(m)?'Этот логин не подошёл, попробуйте другой':'Не удалось зарегистрироваться: '+m)}
+  dropInviteParam();INV_STATE=null;
+  if(!data.session){LOGIN_OK='Регистрация прошла. Войдите со своим логином и паролем.';render();return}
   await afterLogin();
 }
+/* уведомления */
+const seenKey=k=>'asst-seen-'+k+'-'+(MYID||'')+'-'+(ORG||'');
+const getSeen=k=>{try{return JSON.parse(localStorage.getItem(seenKey(k))||'null')}catch(e){return null}};
+const setSeen=(k,v)=>{try{localStorage.setItem(seenKey(k),JSON.stringify(v))}catch(e){}};
+function conflicts(){const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
+  forEntries(d,(en,cl)=>{const w=entryWarn(d,en);if(w&&!/нет навыка/.test(w))out.push({d,en,cl,w})})}));return out}
+function shiftSig(){const role=ROLE(),card=myCard(),f=role==='assistant'?'assistantId':'doctorId';const m={};
+  myShifts(f,card).forEach(({d,en,cl,ch})=>{const other=role==='assistant'?docName(en.doctorId):(asById(en.assistantId)?.name||'ассистент не назначен');
+    m[d+'|'+cl.id+'|'+ch+'|'+en.shift+'|'+other]=`${fmt(d)} ${WD[wdOf(d)].toLowerCase()} · ${shiftTime(en.shift)} · ${cl.name}, кресло ${ch+1} · ${other}`});return m}
+function bellItems(){
+  const it=[];if(!SUPA_ON||!AUTHED)return it;
+  if(isAdmin()){
+    const pend=MEMBERS.filter(u=>u.role==='pending');
+    if(pend.length)it.push({k:'pend',t:`Новые заявки: ${pend.length}`,s:pend.map(u=>u.name||u.login).join(', '),go:'users',stay:true});
+    const seen=getSeen('inv')||[];
+    INVITES.filter(i=>i.used_by&&!seen.includes(i.token)&&(Date.now()-new Date(i.used_at))<14*864e5).forEach(i=>{const u=MEMBERS.find(m=>m.user_id===i.used_by);
+      it.push({k:'inv:'+i.token,t:`${i.card_name||u&&u.name||'Новый сотрудник'}: регистрация по приглашению`,s:`${ROLE_L[i.role]}${u?' · логин '+u.login:''} · ${fmt(iso(new Date(i.used_at)))}`})});
+    conflicts().forEach(c=>it.push({k:'cf',t:`${fmt(c.d)} · ${c.cl.name}, ${docName(c.en.doctorId)}`,s:`${asById(c.en.assistantId)?.name}: ${c.w}`,go:'date:'+c.d,stay:true,warn:true}));
+  }else if(['assistant','doctor'].includes(ROLE())&&myCard()){
+    const cur=shiftSig();let seen=getSeen('shifts');
+    if(!seen){setSeen('shifts',Object.keys(cur));seen=Object.keys(cur)}
+    Object.keys(cur).filter(k=>!seen.includes(k)).forEach(k=>it.push({k:'sh',t:'Новая смена',s:cur[k],go:'mine'}));
+    seen.filter(k=>!cur[k]&&k.split('|')[0]>=TODAY).forEach(k=>{const p=k.split('|');it.push({k:'sh',t:'Смена снята или изменена',s:`${fmt(p[0])} · ${p[4]}`,go:'mine',warn:true})});
+  }
+  return it;
+}
+function updateBell(){const b=$('#bell');if(!b)return;const on=SUPA_ON&&AUTHED&&!LEGACY;b.hidden=!on;if(!on)return;
+  const n=bellItems().length;const e=$('#bellN');e.hidden=!n;e.textContent=n>99?'99+':n;b.setAttribute('aria-label',n?`Уведомления: ${n}`:'Уведомлений нет')}
+function openBell(){
+  M.show(()=>{const it=bellItems();
+    return{title:'<h2>Уведомления</h2>',
+      body:it.length?it.map((x,i)=>`<button class="cand ${x.warn?'bwarn':''}" data-act="bell-go" data-i="${i}"><span><span class="nm">${esc(x.t)}</span><br><span class="why">${esc(x.s||'')}</span></span></button>`).join(''):'<p class="sub">Новых уведомлений нет.</p>',
+      foot:`${it.some(x=>!x.stay)?'<button class="btn" data-act="bell-read">Отметить прочитанными</button>':''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}});
+}
+function markRead(){if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s])}else setSeen('shifts',Object.keys(shiftSig()));updateBell()}
+ACT_LATE.push(()=>{
+  ACT['bell-read']=()=>{markRead();M.refresh()};
+  ACT['bell-go']=b=>{const x=bellItems()[+b.dataset.i];if(!x)return;
+    if(x.k.startsWith('inv:')){const s=getSeen('inv')||[];s.push(x.k.slice(4));setSeen('inv',s);updateBell();M.refresh();return}
+    M.close();
+    if(x.go==='users'){openUsers();return}
+    if(x.go&&x.go.startsWith('date:')){const d=x.go.slice(5);UI.tab='sched';UI.mode='board';if(d<UI.from||d>UI.to){UI.from=d;UI.to=addDays(d,13)}saveUI();render();return}
+    if(x.go==='mine'){markRead();UI.rtab='mine';render()}};
+});
+
+/* приглашения */
+const genToken=()=>{const A='abcdefghijkmnpqrstuvwxyz23456789';let t='';crypto.getRandomValues(new Uint8Array(20)).forEach(x=>t+=A[x%A.length]);return t};
+const inviteLink=t=>location.origin+location.pathname+'?invite='+t;
+let INVITES=[],MEMBERS=[];
+async function loadPeople(){if(!SB||!isAdmin()||LEGACY)return;
+  const[a,b]=await Promise.all([SB.from('invites').select('*').eq('org_id',ORG).order('created_at',{ascending:false}),SB.from('members').select('*')]);
+  if(!a.error)INVITES=a.data;if(!b.error)MEMBERS=b.data.filter(u=>u.org_id===ORG||(isOwner()&&!u.org_id));updateBell()}
+function linkedCards(role){const s=new Set();MEMBERS.forEach(u=>{if(u.role===role&&u.card_id)s.add(u.card_id)});INVITES.forEach(i=>{if(i.role===role&&!i.used_by&&new Date(i.expires_at)>new Date()&&i.card_id)s.add(i.card_id)});return s}
+function openInvite(role,card){
+  if(LEGACY){toast('Сначала выполните SQL для организаций');return}
+  let st={role,card,link:'',busy:false,err:''};
+  M.show(()=>{
+    const cards=st.role==='assistant'?S.cfg.assistants:st.role==='doctor'?S.cfg.doctors:null;const used=linkedCards(st.role);
+    const roles=[['assistant','Ассистент'],['doctor','Врач'],['admin','Ответственный за расписание']];
+    const active=INVITES.filter(i=>!i.used_by&&new Date(i.expires_at)>new Date());
+    return{title:`<h2>Пригласить в программу</h2><p class="sub">${esc(orgName(ORG))}. Ссылка одноразовая и действует 14 дней. Человек зарегистрируется по ней и сразу получит доступ.</p>`,
+    body:st.link?`<div class="note info" style="flex-direction:column;align-items:stretch">
+        <b>Ссылка готова${st.card?' · '+esc(st.role==='assistant'?asById(st.card)?.name:docById(st.card)?.name):''}</b><span class="sub">Отправьте её этому человеку в мессенджер. Она сработает один раз.</span>
+        <input type="text" id="invLink" value="${esc(st.link)}" readonly onclick="this.select()">
+        <div class="row"><button class="btn primary" data-act="inv-copy">Копировать ссылку</button>${navigator.share?'<button class="btn" data-act="inv-share">Поделиться…</button>':''}<button class="btn ghost" data-act="inv-more">Пригласить ещё</button></div></div>`
+      :`<div class="row" style="align-items:flex-end">
+        <label class="f">Кого<select id="invRole">${roles.map(([k,l])=>`<option value="${k}" ${st.role===k?'selected':''}>${l}</option>`).join('')}</select></label>
+        ${cards?`<label class="f" style="flex:1;min-width:180px">Чья карточка<select id="invCard"><option value="">— выберите —</option>${cards.slice().sort(byName).map(c=>`<option value="${c.id}" ${st.card===c.id?'selected':''}>${esc(c.name)}${used.has(c.id)?' (уже есть доступ или ссылка)':''}</option>`).join('')}</select></label>`:''}
+        <button class="btn primary ${st.busy?'busy':''}" data-act="inv-create">Создать ссылку</button></div>
+        ${cards&&!cards.length?`<p class="sub" style="margin:0">Сначала добавьте ${st.role==='assistant'?'ассистента':'врача'} в разделе «${st.role==='assistant'?'Ассистенты':'Врачи'}».</p>`:''}
+        ${st.err?`<p class="lgerr">${esc(st.err)}</p>`:''}`
+      +(active.length?`<div class="grp"><h3>Неиспользованные ссылки<span class="n num">${active.length}</span></h3>${active.map(i=>`<div class="urow"><div class="row" style="gap:6px"><span style="flex:1;min-width:0"><span class="nm">${esc(i.card_name||({admin:'Ответственный'})[i.role]||'')}</span><br><span class="why">${ROLE_L[i.role]} · до ${fmt(iso(new Date(i.expires_at)))}</span></span>
+        <button class="btn sm" data-act="inv-copyold" data-v="${i.token}">Копировать</button><button class="btn sm danger" data-act="inv-del" data-v="${i.token}">Отменить</button></div></div>`).join('')}</div>`:''),
+    foot:'<button class="btn primary" data-act="close">Готово</button>',
+    bind:r=>{const rs=r.querySelector('#invRole');if(rs)rs.onchange=()=>{st.role=rs.value;st.card='';M.refresh()};const cs=r.querySelector('#invCard');if(cs)cs.onchange=()=>{st.card=cs.value}}};
+  },true);
+  const copy=async t=>{try{await navigator.clipboard.writeText(t);toast('Ссылка скопирована')}catch(e){const i=$('#invLink');if(i){i.focus();i.select()}toast('Скопируйте ссылку из поля')}};
+  ACT['inv-create']=async()=>{
+    if(st.role!=='admin'&&!st.card){st.err='Выберите, чья это карточка';M.refresh();return}
+    st.busy=true;st.err='';M.refresh();
+    const card_name=st.role==='assistant'?asById(st.card)?.name:st.role==='doctor'?docById(st.card)?.name:'';
+    const row={token:genToken(),org_id:ORG,role:st.role,card_id:st.card||null,card_name:card_name||null};
+    const r=await SB.from('invites').insert(row);st.busy=false;
+    if(r.error){st.err=/invites/.test(r.error.message)?'Сначала выполните SQL для приглашений':'Не удалось создать: '+r.error.message;M.refresh();return}
+    INVITES.unshift(Object.assign({created_at:new Date().toISOString(),expires_at:new Date(Date.now()+14*864e5).toISOString()},row));st.link=inviteLink(row.token);M.refresh();copy(st.link)};
+  ACT['inv-copy']=()=>copy(st.link);
+  ACT['inv-share']=async()=>{try{await navigator.share({title:'Приглашение в График ассистентов',text:'Регистрация в программе «График ассистентов»',url:st.link})}catch(e){}};
+  ACT['inv-more']=()=>{st={role:st.role,card:'',link:'',busy:false,err:''};M.refresh()};
+  ACT['inv-copyold']=b=>copy(inviteLink(b.dataset.v));
+  ACT['inv-del']=async b=>{if(!armed(b,'Точно?'))return;const r=await SB.from('invites').delete().eq('token',b.dataset.v);if(r.error)toast('Не удалось отменить');else{INVITES=INVITES.filter(i=>i.token!==b.dataset.v);M.refresh();toast('Ссылка отменена')}};
+}
+
 /* управление пользователями (для администратора) */
 const ROLE_L={pending:'Ожидает',owner:'Главный администратор',admin:'Ответственный',assistant:'Ассистент',doctor:'Врач',blocked:'Доступ закрыт'};
 function openUsers(){
@@ -524,12 +654,13 @@ function openUsers(){
       body=G.map(([t,f],i)=>{const arr=list.filter(f);if(!arr.length&&i)return'';return`<div class="grp"><h3>${t}<span class="n num">${arr.length}</span></h3>${arr.map(row).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('')}
     const code=(ORGS.find(o=>o.id===ORG)||{}).code||'';
     return{title:`<h2>Пользователи · ${esc(orgName(ORG))}</h2><p class="sub">Сотрудники регистрируются сами на экране входа с кодом клиники${code?` <b class="num" style="color:var(--ink);letter-spacing:.08em">${esc(code)}</b>`:''}. Выберите роль и, для ассистента или врача, его карточку.</p>`,
-      body,foot:'<button class="btn" data-act="u-reload">Обновить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>',
+      body,foot:'<button class="btn" data-act="u-reload">Обновить</button><button class="btn" data-act="invite">Пригласить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>',
       bind:r=>{r.querySelectorAll('.urole').forEach(x=>x.onchange=()=>{const d=draft[x.dataset.u];d.role=x.value;if(!['assistant','doctor'].includes(d.role))d.card='';else if(d.card&&!(d.role==='assistant'?asById(d.card):docById(d.card)))d.card='';M.refresh()});
         r.querySelectorAll('.ucard').forEach(x=>x.onchange=()=>{draft[x.dataset.u].card=x.value;M.refresh()})}};
   },true);
+  const _load=load;
   const save=async(uid,role,card)=>{const r=await SB.from('members').update(LEGACY?{role,card_id:card||null}:{role,card_id:card||null,org_id:ORG}).eq('user_id',uid);
-    if(r.error)toast(/card_id/.test(r.error.message)?'Сначала выполните новый SQL в Supabase':'Не удалось изменить: '+r.error.message);else toast(role==='blocked'?'Доступ закрыт':'Сохранено');await load()};
+    if(r.error)toast(/card_id/.test(r.error.message)?'Сначала выполните новый SQL в Supabase':'Не удалось изменить: '+r.error.message);else toast(role==='blocked'?'Доступ закрыт':'Сохранено');await load();loadPeople()};
   ACT['u-reload']=()=>{list=null;M.refresh();load()};
   ACT['u-save']=b=>{const d=draft[b.dataset.u];if(d.role==='pending'){toast('Выберите роль');return}
     if(['assistant','doctor'].includes(d.role)&&!d.card){toast('Выберите, чья это карточка');return}save(b.dataset.u,d.role,d.card)};
@@ -623,7 +754,8 @@ function entryWarn(date,en){
 }
 
 /* ---------- render ---------- */
-function render(){
+function render(){renderMain();try{updateBell()}catch(e){}}
+function renderMain(){
   const sb=document.querySelector('[data-act=settings]');if(sb)sb.hidden=SUPA_ON&&!AUTHED;
   const on=$('#orgname');if(on)on.innerHTML=SUPA_ON&&AUTHED&&ORG?(isOwner()&&ORGS.length>1?`<select id="orgSel" aria-label="Организация">${ORGS.map(o=>`<option value="${o.id}" ${o.id===ORG?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`:esc(orgName(ORG))):'';
   if(SUPA_ON&&AUTHED&&!ORG&&!LEGACY){$('#tabs').innerHTML='';$('#main').innerHTML=`<div class="login"><h1>Организаций пока нет</h1><p class="sub">Создайте первую организацию.</p><button class="btn primary" data-act="orgs">Организации</button></div>`;return}
@@ -886,7 +1018,7 @@ function openDoc(id){
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Постоянные навыки</h3>${tagPicker(d.tags,'doc')}</div>
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Приоритетные ассистенты</h3><div class="pick-tags tags">${as.map(a=>`<button type="button" class="tag" data-act="d-prio" data-v="${a.id}" aria-pressed="${d.prio.includes(a.id)}">${esc(a.name)}</button>`).join('')||'<span class="sub">Ассистентов пока нет</span>'}</div></div>
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Не ставить с ассистентами</h3><div class="pick-tags tags">${as.map(a=>`<button type="button" class="tag neg" data-act="d-block" data-v="${a.id}" aria-pressed="${d.block.includes(a.id)}">${esc(a.name)}</button>`).join('')}</div></div>`,
-    foot:`<button class="btn danger" data-act="d-del">Удалить врача</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`,
+    foot:`<button class="btn danger" data-act="d-del">Удалить врача</button><span class="spacer"></span>${SUPA_ON&&!LEGACY?`<button class="btn" data-act="invite" data-r="doctor" data-c="${d.id}">Пригласить в программу</button>`:''}<button class="btn primary" data-act="close">Готово</button>`,
     bind:r=>{r.querySelector('#dName').oninput=e=>{d.name=e.target.value;delete d.example;markCfg()};r.querySelector('#dSpec').oninput=e=>{d.spec=e.target.value;markCfg()}}};
   });
   ACT['d-prio']=b=>{const v=b.dataset.v;d.prio=d.prio.includes(v)?d.prio.filter(x=>x!==v):[...d.prio,v];d.block=d.block.filter(x=>x!==v);markCfg();M.refresh()};
@@ -903,7 +1035,7 @@ function openAs(id){
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Приоритетный ассистент у врачей</h3><div class="pick-tags tags">${S.cfg.doctors.slice().sort(byName).map(d=>`<button type="button" class="tag" data-act="a-prio" data-v="${d.id}" aria-pressed="${d.prio.includes(a.id)}">${esc(d.name)}</button>`).join('')||'<span class="sub">Врачей пока нет</span>'}</div></div>
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Не ставить к врачам</h3><div class="pick-tags tags">${S.cfg.doctors.slice().sort(byName).map(d=>`<button type="button" class="tag neg" data-act="a-block" data-v="${d.id}" aria-pressed="${d.block.includes(a.id)}">${esc(d.name)}</button>`).join('')}</div></div>
       <label class="f">Заметка<textarea id="aNote" rows="2" placeholder="Например: не работает по субботам">${esc(a.note||'')}</textarea></label>`,
-    foot:`<button class="btn danger" data-act="a-del">Удалить ассистента</button><span class="spacer"></span><button class="btn" data-act="avail" data-a="${a.id}">Даты работы</button><button class="btn primary" data-act="close">Готово</button>`,
+    foot:`<button class="btn danger" data-act="a-del">Удалить ассистента</button><span class="spacer"></span><button class="btn" data-act="avail" data-a="${a.id}">Даты работы</button>${SUPA_ON&&!LEGACY?`<button class="btn" data-act="invite" data-r="assistant" data-c="${a.id}">Пригласить</button>`:''}<button class="btn primary" data-act="close">Готово</button>`,
     bind:r=>{r.querySelector('#aName').oninput=e=>{a.name=e.target.value;delete a.example;markCfg()};r.querySelector('#aPhone').oninput=e=>{a.phone=e.target.value;markCfg()};r.querySelector('#aNote').oninput=e=>{a.note=e.target.value;markCfg()};
       const rr=r.querySelector('#aRate');if(rr)rr.oninput=e=>{a.rate=e.target.value.trim();markCfg();const h=r.querySelector('#aRateHalf');if(h)h.placeholder=num(a.rate)!=null?'по умолчанию '+Math.round(num(a.rate)/2):'половина дневной'};
       const rh=r.querySelector('#aRateHalf');if(rh)rh.oninput=e=>{a.rateHalf=e.target.value.trim();markCfg()}}}));
@@ -1298,11 +1430,16 @@ const ACT={
   orgs:()=>{if(M.open)M.close();openOrgs()},
   'auth-tab':b=>{AUTH_TAB=b.dataset.v;LOGIN_ERR='';LOGIN_OK='';render()},
   'auth-check':()=>afterLogin(),
+  'pw-eye':b=>{const i=$('#'+b.dataset.v);if(!i)return;const show=i.type==='password';i.type=show?'text':'password';b.classList.toggle('on',show);b.setAttribute('aria-label',show?'Скрыть пароль':'Показать пароль')},
+  'inv-skip':async()=>{INV_STATE=null;INV_HAS_SESSION=false;dropInviteParam();const{data}=await SB.auth.getSession();if(data&&data.session)await afterLogin();else render()},
+  'inv-logout':async()=>{await SB.auth.signOut();INV_HAS_SESSION=false;AUTHED=false;ME=null;render()},
+  invite:b=>{if(M.open)M.close();openInvite(b.dataset.r||'assistant',b.dataset.c||'')},
+  bell:()=>openBell(),
   export:openExport,
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
 };
-const ROLE_OK=new Set(['rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
+const ROLE_OK=new Set(['pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
@@ -1314,7 +1451,8 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='clName'){const c=clById(UI.clinic);if(c){c.name=e.target.value;markCfg();const b=document.querySelector(`[data-act=clinic-sel][data-v="${c.id}"]`);if(b)b.textContent=c.name}}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id&&e.target.id.startsWith('newTag-')){e.preventDefault();ACT['tg-new']({dataset:{k:e.target.id.slice(7)}})}});
 document.addEventListener('submit',e=>{e.preventDefault();
-  if(e.target.id==='loginForm'){AUTH_TAB==='reg'?doRegister():doLogin();return}
+  if(e.target.id==='loginForm'){doLogin();return}
+  if(e.target.id==='inviteForm'){doRegister();return}
   if(e.target.id==='orgNew')return;
   if(e.target.id==='addDoc'){const n=$('#newDoc').value.trim();if(!n)return;const d={id:uid(),name:n,tags:[],prio:[],block:[]};S.cfg.doctors.push(d);markCfg();render();openDoc(d.id)}
   if(e.target.id==='addAs'){const n=$('#newAs').value.trim();if(!n)return;const a={id:uid(),name:n,tags:[]};S.cfg.assistants.push(a);markCfg();render();openAs(a.id)}
@@ -1379,6 +1517,7 @@ ACT['av-wd']=b=>{const w=+b.dataset.v;avMonthDays().filter(d=>wdOf(d)===w&&avEdi
 ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);AV.refresh()};
 ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;avMonthDays().filter(avEditable).forEach(d=>avSet(d,'none'));markAvail(AV.aid);AV.refresh()};
 ACT['rtab']=b=>{UI.rtab=b.dataset.v;saveUI();render();window.scrollTo(0,0)};
+ACT_LATE.forEach(f=>f());
 render();
 initStore();
 </script>
