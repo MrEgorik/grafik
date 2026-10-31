@@ -287,6 +287,14 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .amap .aname:hover{color:var(--accent)}
 .lg.ok2{background:var(--ok-soft)} .lg.tight2{background:var(--warn-soft)} .lg.bad2{background:var(--bad-soft)}
 .seg{flex-wrap:wrap}
+.boardwrap.scrollbox{overflow:auto;max-height:max(320px,calc(100vh - 100px));max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 100px));overscroll-behavior:contain}
+body.has-box .top{position:static}
+.scrollbox .board thead th{position:sticky;top:0;z-index:2}
+.scrollbox .board.vert thead tr:nth-child(2) th{top:37px}
+.scrollbox .board thead th.lab{left:0;z-index:4}
+.scrollbox .board th.lab{position:sticky;left:0;z-index:1}
+.scrollbox .amap .sumr th,.scrollbox .amap .sumr td{position:static}
+@media (hover:none){.hint{display:none}}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -313,7 +321,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:05'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 23:29'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -804,7 +812,9 @@ function entryWarn(date,en){
 }
 
 /* ---------- render ---------- */
-function render(){renderMain();try{updateBell()}catch(e){}}
+function render(){renderMain();try{updateBell()}catch(e){}setHdr();document.body.classList.toggle('has-box',!!document.querySelector('#main .scrollbox'))}
+function setHdr(){const t=document.querySelector('.top');if(t)document.documentElement.style.setProperty('--hdr',t.offsetHeight+'px')}
+window.addEventListener('resize',setHdr);
 function renderMain(){
   const sb=document.querySelector('[data-act=settings]');if(sb)sb.hidden=SUPA_ON&&!AUTHED;
   const on=$('#orgname');if(on)on.innerHTML=SUPA_ON&&AUTHED&&ORG?(isOwner()&&ORGS.length>1?`<select id="orgSel" aria-label="Организация">${ORGS.map(o=>`<option value="${o.id}" ${o.id===ORG?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`:esc(orgName(ORG))):'';
@@ -920,7 +930,8 @@ function viewBoard(){
   </div>
   ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
     <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
-  <div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap">${board}</div>${editing()?rail:''}</div>`;
+  <div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap scrollbox">${board}</div>${editing()?rail:''}</div>
+  ${has?'<p class="sub hint" style="margin:0">Прокрутка вбок: колесо мыши над строкой с датами или Shift + колесо.</p>':''}`;
 }
 function viewAvailMap(){
   const dates=range(UI.from,UI.to);const as=S.cfg.assistants.slice().sort(byName);
@@ -937,7 +948,7 @@ function viewAvailMap(){
     <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div><span class="spacer"></span>
     ${SUPA_ON?'<button class="btn" data-act="collect">Сбор дат</button>':''}<button class="btn" data-act="rail-add">+ Ассистент</button></div>
   <div class="legend"><span><i class="lg ok2"></i> хватает с запасом</span><span><i class="lg tight2"></i> впритык</span><span><i class="lg bad2"></i> не хватает</span><span>${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span><span>«нужно» — смены врачей в черновике графика</span></div>
-  ${as.length?`<div class="boardwrap">${h}</div>`:'<div class="boardwrap"><div class="empty-board"><h2>Ассистентов пока нет</h2><button class="btn primary" data-act="rail-add">Добавить ассистента</button></div></div>'}
+  ${as.length?`<div class="boardwrap scrollbox">${h}</div>`:'<div class="boardwrap"><div class="empty-board"><h2>Ассистентов пока нет</h2><button class="btn primary" data-act="rail-add">Добавить ассистента</button></div></div>'}
   <p class="sub" style="margin:0">Нажмите на имя ассистента, чтобы изменить его даты.</p>`;
 }
 function viewWeek(){
@@ -1689,6 +1700,8 @@ async function checkVersion(){if(!BUILD)return;
       $('#updBtn').onclick=()=>{const u=new URL(location.href);u.searchParams.set('v',v);location.replace(u.toString())}}}catch(e){}}
 setTimeout(checkVersion,3000);setInterval(()=>{if(document.visibilityState==='visible')checkVersion()},5*60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkVersion()});
+document.addEventListener('wheel',e=>{const th=e.target.closest('.scrollbox thead');if(!th||e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))return;
+  const box=th.closest('.scrollbox');if(box.scrollWidth<=box.clientWidth)return;e.preventDefault();box.scrollLeft+=e.deltaY},{passive:false});
 ACT_LATE.forEach(f=>f());
 render();
 initStore();
