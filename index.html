@@ -269,6 +269,10 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
+const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
+const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
+const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
+const emailToLogin=e=>String(e||'').endsWith('@'+LOGIN_DOMAIN)?String(e).split('@')[0]:String(e||'');
 /* ---------- utils ---------- */
 const STANDALONE=!(window.claude&&window.claude.use);
 const $=(s,r=document)=>r.querySelector(s);
@@ -362,7 +366,7 @@ const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 function costMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{if(en.assistantId){const a=asById(en.assistantId);m[en.assistantId]=(m[en.assistantId]||0)+shiftCost(a,en.shift)}}));return m}
 function setStore(cls,text){const el=$('#store');el.className='store '+cls;el.lastElementChild.textContent=text}
 
-let SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false;
+let SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
 const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
 function applyDoc(path,data){const[col,id]=path.split('/');
   if(col==='cfg'&&id==='main'){S.cfg=clone(data);normalize()}
@@ -374,13 +378,19 @@ async function initSupa(){
   let ok=false;for(const src of SB_LIBS){try{await loadLib(src);ok=!!window.supabase;if(ok)break}catch(e){}}
   if(!ok){setStore('warn','Нет связи');LOGIN_ERR='Нет связи с интернетом. Проверьте подключение и обновите страницу.';render();return}
   SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});
-  SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;setStore('warn','Не выполнен вход');render()}});
+  SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;PENDING=false;ME=null;setStore('warn','Не выполнен вход');render()}});
   const{data}=await SB.auth.getSession();
   if(!data||!data.session){setStore('warn','Не выполнен вход');render();return}
   await afterLogin();
 }
 async function afterLogin(){
   setStore('','Загрузка…');
+  const ur=await SB.auth.getUser();MYID=ur.data&&ur.data.user?ur.data.user.id:null;
+  const mr=await SB.from('members').select('role,login,name').eq('user_id',MYID).maybeSingle();
+  if(mr.error){console.warn('members',mr.error);ME={role:'admin',login:emailToLogin(ur.data?.user?.email)}} // таблицы участников ещё нет — прежний режим
+  else ME=mr.data||{role:'none'};
+  if(ME.role!=='admin'){AUTHED=false;PENDING=true;setStore('warn','Нет доступа');render();return}
+  PENDING=false;
   const{data,error}=await SB.from('docs').select('path,data');
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
   S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};
@@ -393,20 +403,72 @@ async function afterLogin(){
   setStore('on','Сохраняется в базе');render();
 }
 function viewLogin(){
-  return`<div class="login"><h1>Вход</h1><p class="sub">График ассистентов</p>
-  <form id="loginForm" class="loginf"><label class="f">Почта<input type="email" id="lgEmail" autocomplete="username" required></label>
-  <label class="f">Пароль<input type="password" id="lgPass" autocomplete="current-password" required></label>
-  ${LOGIN_ERR?`<p class="lgerr">${esc(LOGIN_ERR)}</p>`:''}
-  <button class="btn primary ${LOGIN_BUSY?'busy':''}" ${SB?'':'disabled'}>${LOGIN_BUSY?'Вход…':'Войти'}</button></form>
-  <p class="sub">Логины выдаёт администратор программы.</p></div>`;
+  const reg=AUTH_TAB==='reg';
+  return`<div class="login"><h1>${reg?'Регистрация':'Вход'}</h1><p class="sub">График ассистентов</p>
+  <div class="seg"><button type="button" data-act="auth-tab" data-v="in" aria-pressed="${!reg}">Вход</button><button type="button" data-act="auth-tab" data-v="reg" aria-pressed="${reg}">Регистрация</button></div>
+  <form id="loginForm" class="loginf">
+  ${reg?`<label class="f">Имя и фамилия<input type="text" id="rgName" autocomplete="name" placeholder="Волкова Анна" required></label>`:''}
+  <label class="f">Логин${reg?' — придумайте, латиницей':''}<input type="text" id="lgLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="${reg?'volkova':''}" required></label>
+  <label class="f">Пароль${reg?' — не короче 6 символов':''}<input type="password" id="lgPass" autocomplete="${reg?'new-password':'current-password'}" required></label>
+  ${reg?`<label class="f">Повторите пароль<input type="password" id="lgPass2" autocomplete="new-password" required></label>`:''}
+  ${LOGIN_ERR?`<p class="lgerr">${esc(LOGIN_ERR)}</p>`:''}${LOGIN_OK?`<p class="okline" style="margin:0">${esc(LOGIN_OK)}</p>`:''}
+  <button class="btn primary ${LOGIN_BUSY?'busy':''}" ${SB?'':'disabled'}>${LOGIN_BUSY?'Подождите…':reg?'Зарегистрироваться':'Войти'}</button></form>
+  <p class="sub">${reg?'После регистрации администратор должен открыть вам доступ.':'Нет логина? Откройте вкладку «Регистрация».'}</p></div>`;
 }
+function viewPending(){
+  const blocked=ME&&ME.role==='blocked';
+  return`<div class="login"><h1>${blocked?'Доступ закрыт':'Заявка отправлена'}</h1>
+  <p>${ME&&ME.name?esc(ME.name)+', в':'В'}ы вошли как <b>${esc(ME&&ME.login||'')}</b>.</p>
+  <p class="sub">${blocked?'Администратор закрыл доступ к программе. Если это ошибка, обратитесь к нему.':'Администратор ещё не открыл доступ. Как только откроет, нажмите «Проверить».'}</p>
+  <div class="row">${blocked?'':'<button class="btn primary" data-act="auth-check">Проверить</button>'}<button class="btn" data-act="logout">Выйти</button></div></div>`;
+}
+const keepVals=ids=>{const v={};ids.forEach(i=>{const e=$('#'+i);if(e&&e.type!=='password')v[i]=e.value});return()=>Object.entries(v).forEach(([i,x])=>{const e=$('#'+i);if(e)e.value=x})};
 async function doLogin(){
-  if(!SB||LOGIN_BUSY)return;const email=$('#lgEmail').value.trim(),password=$('#lgPass').value;
-  LOGIN_BUSY=true;LOGIN_ERR='';render();
-  const{error}=await SB.auth.signInWithPassword({email,password});
+  if(!SB||LOGIN_BUSY)return;const login=$('#lgLogin').value.trim(),password=$('#lgPass').value;
+  const restore=keepVals(['lgLogin']);
+  LOGIN_BUSY=true;LOGIN_ERR='';LOGIN_OK='';render();restore();
+  const{error}=await SB.auth.signInWithPassword({email:loginToEmail(login),password});
   LOGIN_BUSY=false;
-  if(error){LOGIN_ERR=/invalid/i.test(error.message)?'Неверная почта или пароль':'Не удалось войти: '+error.message;render();setTimeout(()=>{const e=$('#lgEmail');if(e)e.value=email},0);return}
+  if(error){LOGIN_ERR=/invalid/i.test(error.message)?'Неверный логин или пароль':'Не удалось войти: '+error.message;render();restore();return}
   await afterLogin();
+}
+async function doRegister(){
+  if(!SB||LOGIN_BUSY)return;
+  const name=$('#rgName').value.trim(),login=$('#lgLogin').value.trim().toLowerCase(),p1=$('#lgPass').value,p2=$('#lgPass2').value;
+  const restore=keepVals(['rgName','lgLogin']);
+  const fail=t=>{LOGIN_ERR=t;LOGIN_OK='';render();restore()};
+  if(!LOGIN_RE.test(login))return fail('Логин: от 3 до 30 символов, латинские буквы, цифры, точка, дефис или _');
+  if(p1.length<6)return fail('Пароль должен быть не короче 6 символов');
+  if(p1!==p2)return fail('Пароли не совпадают');
+  LOGIN_BUSY=true;LOGIN_ERR='';render();restore();
+  const{data,error}=await SB.auth.signUp({email:loginToEmail(login),password:p1,options:{data:{name}}});
+  LOGIN_BUSY=false;
+  if(error){const m=error.message||'';
+    return fail(/registered|exists/i.test(m)?'Такой логин уже занят, придумайте другой':/not allowed|disabled/i.test(m)?'Регистрация сейчас выключена администратором':/invalid/i.test(m)?'Этот логин не подошёл, попробуйте другой':'Не удалось зарегистрироваться: '+m)}
+  if(!data.session){AUTH_TAB='in';LOGIN_OK='Регистрация прошла, но вход пока невозможен: в настройках базы включено подтверждение почты. Сообщите администратору.';render();return}
+  await afterLogin();
+}
+/* управление пользователями (для администратора) */
+function openUsers(){
+  let list=null,err='';
+  const load=async()=>{const r=await SB.from('members').select('user_id,login,name,role,created_at').order('created_at');if(r.error)err=r.error.message;else list=r.data;if(M.open)M.refresh()};
+  const RL={pending:'Ожидают доступа',admin:'С доступом',blocked:'Доступ закрыт'};
+  M.show(()=>{
+    let body;
+    if(err)body=`<div class="note">Не удалось загрузить список: ${esc(err)}</div>`;
+    else if(!list)body='<p class="sub">Загрузка…</p>';
+    else body=['pending','admin','blocked'].map(g=>{const arr=list.filter(u=>u.role===g);if(!arr.length&&g!=='pending')return'';
+      return`<div class="grp"><h3>${RL[g]}<span class="n num">${arr.length}</span></h3>${arr.map(u=>`<div class="cand" style="cursor:default"><span><span class="nm">${esc(u.name||u.login)}</span><br><span class="why">логин: ${esc(u.login)}${u.user_id===MYID?' · это вы':''}</span></span><span class="r" style="display:flex;gap:6px">
+        ${g==='pending'?`<button class="btn sm primary" data-act="u-role" data-u="${u.user_id}" data-v="admin">Дать доступ</button><button class="btn sm" data-act="u-role" data-u="${u.user_id}" data-v="blocked">Отклонить</button>`:''}
+        ${g==='admin'&&u.user_id!==MYID?`<button class="btn sm danger" data-act="u-role" data-u="${u.user_id}" data-v="blocked">Закрыть доступ</button>`:''}
+        ${g==='blocked'?`<button class="btn sm" data-act="u-role" data-u="${u.user_id}" data-v="admin">Вернуть доступ</button>`:''}</span></div>`).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('');
+    return{title:'<h2>Пользователи</h2><p class="sub">Новые люди регистрируются сами на экране входа и попадают сюда. Пока у всех с доступом одинаковые права.</p>',
+      body,foot:'<button class="btn" data-act="u-reload">Обновить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>'};
+  });
+  ACT['u-reload']=()=>{list=null;M.refresh();load()};
+  ACT['u-role']=async b=>{b.classList.add('busy');const r=await SB.from('members').update({role:b.dataset.v}).eq('user_id',b.dataset.u);
+    if(r.error)toast('Не удалось изменить: '+r.error.message);else toast(b.dataset.v==='admin'?'Доступ открыт':'Доступ закрыт');await load()};
+  load();
 }
 async function initStore(){
   if(SUPA_ON){await initSupa();return}
@@ -474,7 +536,8 @@ function entryWarn(date,en){
 
 /* ---------- render ---------- */
 function render(){
-  if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=viewLogin();return}
+  const sb=document.querySelector('[data-act=settings]');if(sb)sb.hidden=SUPA_ON&&!AUTHED;
+  if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=PENDING?viewPending():viewLogin();return}
   $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
   const m=$('#main');
   if(UI.tab==='sched')m.innerHTML=UI.mode==='week'?viewWeek():viewBoard();
@@ -903,7 +966,7 @@ function openSettings(){
       <div><h3 class="sh3">Время смен в файлах</h3>
       ${sw('sTimes',st.useTimes!==false,'Писать часы вместо «утро / вечер»','Например «Смирнов 9-14 2». Если выключить, будет «Смирнов утро 2».')}
       <div class="row" id="timesRow">${['am','pm','day'].map(k=>`<label class="f" style="flex:1;min-width:100px">${SH[k].l}<input type="text" class="stime" data-k="${k}" value="${esc((st.times||{})[k]||'')}" ${st.useTimes===false?'disabled':''}></label>`).join('')}</div></div>
-      ${SUPA_ON&&AUTHED?`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вход выполнен</span><span class="spacer"></span><button class="btn sm" data-act="logout">Выйти</button></div></div>`:''}
+      ${SUPA_ON&&AUTHED?`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вы вошли как <b>${esc(ME&&ME.login||'')}</b></span><span class="spacer"></span><button class="btn sm" data-act="users">Пользователи</button><button class="btn sm" data-act="logout">Выйти</button></div></div>`:''}
       <div><h3 class="sh3">Резервная копия</h3><p class="sub" style="margin:0 0 8px">Все врачи, ассистенты, даты и графики в одном файле. Так данные переносятся между онлайн- и офлайн-версией.</p>
       <div class="row"><button class="btn" data-act="bk-save">Сохранить в файл</button><label class="btn" for="bkFile" style="cursor:pointer">Загрузить из файла</label><input type="file" id="bkFile" accept=".json,application/json" hidden></div>
       ${BK?`<div class="note" style="margin-top:8px">Файл от ${esc(BK.when)}: врачей ${BK.data.cfg.doctors.length}, ассистентов ${BK.data.cfg.assistants.length}. Текущие данные будут заменены.<span class="spacer"></span><button class="btn sm" data-act="bk-cancel">Отмена</button><button class="btn sm danger" data-act="bk-apply">Заменить</button></div>`:''}</div>`,
@@ -1099,7 +1162,10 @@ const ACT={
     removeAssistants(S.cfg.assistants.filter(a=>a.example).map(a=>a.id));removeDoctors(S.cfg.doctors.filter(d=>d.example).map(d=>d.id));render();toast('Примеры удалены')},
   close:()=>M.close(),
   settings:openSettings,
-  logout:async()=>{M.close();if(SB)await SB.auth.signOut();AUTHED=false;render()},
+  logout:async()=>{if(M.open)M.close();if(SB)await SB.auth.signOut();AUTHED=false;PENDING=false;ME=null;LOGIN_ERR='';LOGIN_OK='';render()},
+  users:()=>{M.close();openUsers()},
+  'auth-tab':b=>{AUTH_TAB=b.dataset.v;LOGIN_ERR='';LOGIN_OK='';render()},
+  'auth-check':()=>afterLogin(),
   export:openExport,
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
@@ -1113,7 +1179,7 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{if(e.target.id==='clName'){const c=clById(UI.clinic);if(c){c.name=e.target.value;markCfg();const b=document.querySelector(`[data-act=clinic-sel][data-v="${c.id}"]`);if(b)b.textContent=c.name}}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id&&e.target.id.startsWith('newTag-')){e.preventDefault();ACT['tg-new']({dataset:{k:e.target.id.slice(7)}})}});
 document.addEventListener('submit',e=>{e.preventDefault();
-  if(e.target.id==='loginForm'){doLogin();return}
+  if(e.target.id==='loginForm'){AUTH_TAB==='reg'?doRegister():doLogin();return}
   if(e.target.id==='addDoc'){const n=$('#newDoc').value.trim();if(!n)return;const d={id:uid(),name:n,tags:[],prio:[],block:[]};S.cfg.doctors.push(d);markCfg();render();openDoc(d.id)}
   if(e.target.id==='addAs'){const n=$('#newAs').value.trim();if(!n)return;const a={id:uid(),name:n,tags:[]};S.cfg.assistants.push(a);markCfg();render();openAs(a.id)}
 });
