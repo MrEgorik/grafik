@@ -338,6 +338,25 @@ body.has-box .top{position:static}
 #tour .t-n{font-size:12px;color:var(--muted);font-weight:600}
 #tour .t-btns{display:flex;gap:6px;align-items:center}
 @media (prefers-reduced-motion:reduce){#tour .t-hole,#tour .t-tip{transition:none}#tour.in,#tour.out,#tour .t-hole.act{animation:none}}
+.board.dens-xc td.c{width:84px;min-width:84px;padding:1px}
+.board.dens-xc .ent{padding:2px 3px;gap:1px;border-radius:4px}
+.board.dens-xc .ent+.ent{margin-top:2px}
+.board.dens-xc .ent .h{gap:3px}
+.board.dens-xc .ent .doc{font-size:11px}
+.board.dens-xc .as{padding:1px 3px;font-size:10.5px;gap:3px;border-radius:4px}
+.board.dens-xc .as .dot{width:5px;height:5px}
+.board.dens-xc .as .cost{display:none}
+.board.dens-xc .sh{min-width:14px;height:14px;font-size:9px;padding:0 2px;border-radius:3px}
+.board.dens-xc .addent{display:none}
+.board.dens-xc td.c:hover .addent{display:block}
+@media (hover:none){.board.dens-xc .addent{display:block;font-size:10px;line-height:10px}}
+.board.dens-xc .lab{min-width:44px;padding:2px 4px;font-size:10px}
+.board.dens-xc thead th{padding:3px 4px} .board.dens-xc thead th .d{font-size:12px} .board.dens-xc thead th .sub{font-size:10.5px}
+.board.dens-xc .sd{font-size:9.5px;padding:0 3px;margin-top:2px}
+.board.dens-xc tr.cl td{padding:2px 6px;font-size:11px}
+.board.dens-xc.vert thead tr:nth-child(2) th{top:23px}
+.board.amap.dens-xc td{min-width:26px;padding:2px 1px;font-size:11px}
+.board.amap.dens-xc th.lab{min-width:100px;font-size:11px}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -364,7 +383,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 01:05'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 01:11'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -893,10 +912,10 @@ function cellHTML(d,cl,ch){
   arr.forEach(en=>{
     const a=asById(en.assistantId);const wr=a?entryWarn(d,en):'';const miss=MISS.get(en.id);
     const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
-    h+=`<div class="ent"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="Изменить смену врача">${esc(docName(en.doctorId))}</button></div>`;
+    h+=`<div class="ent"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))} — изменить смену">${esc(nm(docName(en.doctorId)))}</button></div>`;
     if(tg.length&&st.showTags)h+=`<div class="tags">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`;
-    h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
-       :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${of?`+ ассистент · откликов: ${of}`:miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
+    h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm(a.name))}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
+       :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${XS()?(of?`+ ${of}`:miss?'нет':'+'):of?`+ ассистент · откликов: ${of}`:miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
     h+=`</div>`;
   });
   const full=arr.some(e=>e.shift==='day')||arr.length>=2;
@@ -905,7 +924,7 @@ function cellHTML(d,cl,ch){
 }
 function cellRO(d,cl,ch){
   return cellArr(d,cl.id,ch,false).map(en=>{const a=asById(en.assistantId);const me=(ROLE()==='assistant'&&en.assistantId===myCard())||(ROLE()==='doctor'&&en.doctorId===myCard());
-    return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(docName(en.doctorId))}</span></div><div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(a.name):'—'}</div></div>`}).join('');
+    return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(nm(docName(en.doctorId)))}</span></div><div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(nm(a.name)):'—'}</div></div>`}).join('');
 }
 // даты по горизонтали: строки = кресла, столбцы = дни
 /* сколько ассистентов могут и сколько нужно на дату */
@@ -918,13 +937,15 @@ function lvl(have,need){if(!need)return'';if(have<need)return'bad';if(have-need<
 function sdLevel(x){const l=[lvl(x.am,x.nAm),lvl(x.pm,x.nPm)];return l.includes('bad')?'bad':l.includes('tight')?'tight':l.includes('ok')?'ok':''}
 function sdBadge(d){if(!editing()||!S.cfg.assistants.length)return'';const x=supplyDemand(d);if(!x.need&&!x.any)return'';
   const t=`Утро: могут ${x.am}, нужно ${x.nAm}. Вечер: могут ${x.pm}, нужно ${x.nPm}.`;
-  return`<div class="sd ${sdLevel(x)}" title="${t}">могут ${x.any} · нужно ${x.need}</div>`}
+  return`<div class="sd ${sdLevel(x)}" title="${t}">${XS()?`${x.any}/${x.need}`:`могут ${x.any} · нужно ${x.need}`}</div>`}
 /* масштаб сетки (у каждого устройства свой) */
 const ZOOMS=[.6,.7,.8,.9,1,1.15,1.3,1.5];
 const zoomVal=()=>ZOOMS.includes(UI.zoom)?UI.zoom:1;
 const zoomCss=()=>zoomVal()===1?'':`zoom:${zoomVal()}`;
-const densCls=()=>UI.dens==='c'?'dens-c':UI.dens==='l'?'dens-l':'';
-const densCtl=()=>`<div class="seg dens" role="group" aria-label="Плотность сетки">${[['c','Плотно'],['n','Обычно'],['l','Просторно']].map(([k,l])=>`<button data-act="dens" data-v="${k}" aria-pressed="${(UI.dens||'n')===k}">${l}</button>`).join('')}</div>`;
+const densCls=()=>UI.dens==='xc'?'dens-c dens-xc':UI.dens==='c'?'dens-c':UI.dens==='l'?'dens-l':'';
+const XS=()=>UI.dens==='xc';
+const nm=n=>XS()?surname(n):n; // в «супер плотно» — только фамилия
+const densCtl=()=>`<div class="seg dens" role="group" aria-label="Плотность сетки">${[['xc','Супер плотно'],['c','Плотно'],['n','Обычно'],['l','Просторно']].map(([k,l])=>`<button data-act="dens" data-v="${k}" aria-pressed="${(UI.dens||'n')===k}">${l}</button>`).join('')}</div>`;
 const zoomCtl=()=>densCtl()+`<div class="zoom" role="group" aria-label="Масштаб сетки"><button class="btn sm" data-act="zoom" data-v="-1" aria-label="Мельче" ${zoomVal()===ZOOMS[0]?'disabled':''}>−</button><button class="btn sm ghost num" data-act="zoom" data-v="0" title="Обычный размер">${Math.round(zoomVal()*100)}%</button><button class="btn sm" data-act="zoom" data-v="1" aria-label="Крупнее" ${zoomVal()===ZOOMS[ZOOMS.length-1]?'disabled':''}>+</button></div>`;
 function boardH(dates,cls){
   let h=`<table class="board ${densCls()}" style="${zoomCss()}"><thead><tr><th class="lab">Кресло</th>`;
