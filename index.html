@@ -271,6 +271,12 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .cand.bwarn{border-left:3px solid var(--warn)}
 .newp{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:8px;padding:10px}
 .updbar{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,calc(env(safe-area-inset-bottom,0px) + 12px));z-index:40;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:10px 12px;display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px rgb(0 0 0/.2);max-width:calc(100% - 32px);font-weight:600}
+.cal .dd.coll{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--warn) 55%,transparent)}
+.cal .dd.lock{background-image:repeating-linear-gradient(135deg,transparent 0 5px,color-mix(in srgb,var(--muted) 22%,transparent) 5px 7px)}
+.cal .dd:disabled{cursor:not-allowed}
+.lg{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid var(--line);vertical-align:-2px}
+.lg.coll{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--warn) 55%,transparent)}
+.lg.lock{background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--muted) 30%,transparent) 3px 5px)}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -297,7 +303,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 21:24'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 22:01'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -323,7 +329,13 @@ const shChip=s=>`<span class="sh ${s}" title="${SH[s]?.l||''}">${SH[s]?.s||'?'}<
 const TODAY=iso(new Date());
 
 /* ---------- state ---------- */
-const S={cfg:{tags:[],doctors:[],assistants:[],clinics:[]},avail:{},months:{}};
+const S={cfg:{tags:[],doctors:[],assistants:[],clinics:[]},avail:{},months:{},pub:{}};
+// опубликованное расписание (видят сотрудники) — только в версии с базой
+let FORCE_SRC=null;
+const usePub=()=>FORCE_SRC!==null?FORCE_SRC:(SUPA_ON&&(!isAdmin()||UI.mode==='pub'));
+const monthsSrc=()=>usePub()?S.pub:S.months;
+const withSrc=(pub,fn)=>{const o=FORCE_SRC;FORCE_SRC=pub;try{return fn()}finally{FORCE_SRC=o}};
+const editing=()=>isAdmin()&&!usePub();
 function loadUI(){try{const u=JSON.parse(localStorage.getItem('asst-ui')||'null');if(u)return u}catch(e){}return null}
 let UI=Object.assign({orient:'h',tab:'sched',mode:'board',from:TODAY,to:addDays(TODAY,13),clinic:null,railOpen:window.innerWidth>1000},loadUI()||{});
 const MISS=new Map(); // entryId -> reason, после автозаполнения
@@ -355,6 +367,7 @@ const Store={
     const[col,id]=path.split('/');
     if(col==='avail')return S.avail[id]?{dates:clone(S.avail[id])}:null;
     if(col==='months')return S.months[id]&&Object.keys(S.months[id]).length?{days:clone(S.months[id])}:null;
+    if(col==='pub')return S.pub[id]&&Object.keys(S.pub[id]).length?{days:clone(S.pub[id])}:null;
   },
   flush(path){
     const v=this.ver[path];
@@ -364,7 +377,7 @@ const Store={
       this.chains[path]=prev.then(async()=>{
         if(!ORG&&!LEGACY)return;
         const r=body?await SB.from('docs').upsert({path:P(path),data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',P(path));
-        if(r.error){toast(/row-level|permission/i.test(r.error.message)?'Нет прав на изменение':'Не удалось сохранить. Проверьте интернет');console.warn(r.error)}
+        if(r.error){const m=r.error.message||'';toast(/закреплен/i.test(m)?m+'. Изменение не сохранено':/row-level|permission/i.test(m)?'Нет прав на изменение':'Не удалось сохранить. Проверьте интернет');console.warn(r.error)}
       }).finally(()=>{if(this.ver[path]===v)this.dirty.delete(path)});
       return;
     }
@@ -401,6 +414,7 @@ const orgName=id=>(ORGS.find(o=>o.id===id)||{}).name||'';
 const P=p=>LEGACY?p:ORG+':'+p; // путь в базе с префиксом организации
 const myCard=()=>ME&&ME.card_id||null;
 const markMonth=ym=>{if(!isAdmin())return;Store.mark('months/'+ym)};
+const markPub=ym=>{if(!isAdmin())return;Store.mark('pub/'+ym)};
 const markAvail=id=>{if(!isAdmin()&&!(ROLE()==='assistant'&&id===myCard()))return;Store.mark('avail/'+id)};
 
 function normalize(){
@@ -408,6 +422,7 @@ function normalize(){
   c.doctors.forEach(d=>{d.tags=d.tags||[];d.prio=d.prio||[];d.block=d.block||[]});
   c.assistants.forEach(a=>{a.tags=a.tags||[]});
   c.clinics.forEach(k=>{k.chairs=Math.max(1,k.chairs|0||1);k.template=k.template||{}});
+  if(!Array.isArray(c.collect))c.collect=[];
   c.settings=Object.assign({rates:false,cheap:false,showTags:true,useTimes:true},c.settings||{});c.settings.times=Object.assign({am:'9-14',pm:'15-21',day:'9-21'},c.settings.times||{});
 }
 const SET=()=>S.cfg.settings||{rates:false,cheap:false,showTags:true};
@@ -423,8 +438,9 @@ function applyDoc(path,data){const[col,id]=path.split('/');
   if(col==='cfg'&&id==='main'){S.cfg=clone(data);mergePriv();normalize()}
   else if(col==='cfg'&&id==='private'){PRIV=clone(data||{});PRIV.doctors=PRIV.doctors||{};PRIV.assistants=PRIV.assistants||{};mergePriv();normalize()}
   else if(col==='avail')S.avail[id]=clone(data.dates||{});
-  else if(col==='months')S.months[id]=clone(data.days||{})}
-function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id]}
+  else if(col==='months')S.months[id]=clone(data.days||{});
+  else if(col==='pub')S.pub[id]=clone(data.days||{})}
+function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id];else if(col==='pub')delete S.pub[id]}
 async function initSupa(){
   Store.mode='supa';setStore('','Подключение…');
   let ok=false;for(const src of SB_LIBS){try{await loadLib(src);ok=!!window.supabase;if(ok)break}catch(e){}}
@@ -460,7 +476,7 @@ async function loadOrgData(){
   const{data:raw,error}=LEGACY?await SB.from('docs').select('path,data'):await SB.from('docs').select('path,data').like('path',pre+'%');
   const data=(raw||[]).filter(r=>LEGACY?!r.path.includes(':'):true).map(r=>({path:r.path.slice(pre.length),data:r.data}));
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
-  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};PRIV={doctors:{},assistants:{}};
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};PRIV={doctors:{},assistants:{}};
   const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
   data.forEach(r=>{if(r.path!=='cfg/main')applyDoc(r.path,r.data)});normalize();
   AUTHED=true;LOGIN_ERR='';
@@ -552,8 +568,8 @@ async function doRegister(){
 const seenKey=k=>'asst-seen-'+k+'-'+(MYID||'')+'-'+(ORG||'');
 const getSeen=k=>{try{return JSON.parse(localStorage.getItem(seenKey(k))||'null')}catch(e){return null}};
 const setSeen=(k,v)=>{try{localStorage.setItem(seenKey(k),JSON.stringify(v))}catch(e){}};
-function conflicts(){const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
-  forEntries(d,(en,cl)=>{const w=entryWarn(d,en);if(w&&!/нет навыка/.test(w))out.push({d,en,cl,w})})}));return out}
+function conflicts(){return withSrc(false,()=>{const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
+  forEntries(d,(en,cl)=>{const w=entryWarn(d,en);if(w&&!/нет навыка/.test(w))out.push({d,en,cl,w})})}));return out})}
 function shiftSig(){const role=ROLE(),card=myCard(),f=role==='assistant'?'assistantId':'doctorId';const m={};
   myShifts(f,card).forEach(({d,en,cl,ch})=>{const other=role==='assistant'?docName(en.doctorId):(asById(en.assistantId)?.name||'ассистент не назначен');
     m[d+'|'+cl.id+'|'+ch+'|'+en.shift+'|'+other]=`${fmt(d)} ${WD[wdOf(d)].toLowerCase()} · ${shiftTime(en.shift)} · ${cl.name}, кресло ${ch+1} · ${other}`});return m}
@@ -566,7 +582,10 @@ function bellItems(){
     INVITES.filter(i=>i.used_by&&!seen.includes(i.token)&&(Date.now()-new Date(i.used_at))<14*864e5).forEach(i=>{const u=MEMBERS.find(m=>m.user_id===i.used_by);
       it.push({k:'inv:'+i.token,t:`${i.card_name||u&&u.name||'Новый сотрудник'}: регистрация по приглашению`,s:`${ROLE_L[i.role]}${u?' · логин '+u.login:''} · ${fmt(iso(new Date(i.used_at)))}`})});
     conflicts().forEach(c=>it.push({k:'cf',t:`${fmt(c.d)} · ${c.cl.name}, ${docName(c.en.doctorId)}`,s:`${asById(c.en.assistantId)?.name}: ${c.w}`,go:'date:'+c.d,stay:true,warn:true}));
+    activeColl().filter(c=>daysLeft(c.deadline)<=3).forEach(c=>{const miss=S.cfg.assistants.filter(a=>!range(c.from,c.to).some(d=>(S.avail[a.id]||{})[d]));
+      if(miss.length)it.push({k:'cl',t:`Сбор дат на ${fmt(c.from)}–${fmt(c.to)}: ${leftText(c)}`,s:'Не отметились: '+miss.map(a=>a.name).join(', '),go:'collect',stay:true,warn:true})});
   }else if(['assistant','doctor'].includes(ROLE())&&myCard()){
+    if(ROLE()==='assistant')activeColl().filter(c=>c.to>=TODAY).forEach(c=>it.push({k:'cl',t:`Отметьте даты на ${fmt(c.from)}–${fmt(c.to)} до ${fmt(c.deadline)}`,s:leftText(c)+'. Потом даты закрепятся.',go:'avail',stay:true,warn:daysLeft(c.deadline)<=2}));
     const cur=shiftSig();let seen=getSeen('shifts');
     if(!seen){setSeen('shifts',Object.keys(cur));seen=Object.keys(cur)}
     Object.keys(cur).filter(k=>!seen.includes(k)).forEach(k=>it.push({k:'sh',t:'Новая смена',s:cur[k],go:'mine'}));
@@ -590,7 +609,9 @@ ACT_LATE.push(()=>{
     M.close();
     if(x.go==='users'){openUsers();return}
     if(x.go&&x.go.startsWith('date:')){const d=x.go.slice(5);UI.tab='sched';UI.mode='board';if(d<UI.from||d>UI.to){UI.from=d;UI.to=addDays(d,13)}saveUI();render();return}
-    if(x.go==='mine'){markRead();UI.rtab='mine';render()}};
+    if(x.go==='mine'){markRead();UI.rtab='mine';render()}
+    if(x.go==='avail'){UI.rtab='avail';const c=activeColl()[0];if(c)AV.month=ymOf(c.from);render()}
+    if(x.go==='collect')openCollect()};
 });
 
 /* приглашения */
@@ -683,7 +704,7 @@ function openUsers(){
 async function switchOrg(id){if(!isOwner()||id===ORG)return;
   if(Store.dirty.size){toast('Подождите секунду — сохраняются изменения');render();return}
   ORG=id;UI.org=id;saveUI();if(M.open)M.close();
-  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};PRIV={doctors:{},assistants:{}};normalize();render();await loadOrgData()}
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};PRIV={doctors:{},assistants:{}};normalize();render();await loadOrgData()}
 const genCode=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';const r=crypto.getRandomValues(new Uint8Array(6));r.forEach(x=>c+=A[x%A.length]);return c};
 function openOrgs(){
   let busy=false;
@@ -735,7 +756,7 @@ async function initStore(){
 let softT;function renderSoft(){clearTimeout(softT);softT=setTimeout(()=>{render();if(M.open)M.refresh()},60)}
 
 /* ---------- schedule data ---------- */
-function dayObj(date,create){const ym=ymOf(date);if(!S.months[ym]){if(!create)return null;S.months[ym]={}}const m=S.months[ym];if(!m[date]){if(!create)return null;m[date]={}}return m[date]}
+function dayObj(date,create){const ym=ymOf(date);const SRC=create?S.months:monthsSrc();if(!SRC[ym]){if(!create)return null;SRC[ym]={}}const m=SRC[ym];if(!m[date]){if(!create)return null;m[date]={}}return m[date]}
 function cellArr(date,cid,ch,create){const d=dayObj(date,create);if(!d)return[];if(!d[cid]){if(!create)return[];d[cid]={}}const c=d[cid];if(!c[ch]){if(!create)return[];c[ch]=[]}return c[ch]}
 function forEntries(date,fn){const d=dayObj(date,false);if(!d)return;for(const cl of S.cfg.clinics){const c=d[cl.id];if(!c)continue;for(let ch=0;ch<cl.chairs;ch++){(c[ch]||[]).forEach(en=>fn(en,cl,ch))}}}
 function findEntry(date,eid){let r=null;forEntries(date,(en,cl,ch)=>{if(en.id===eid)r={en,cl,ch}});return r}
@@ -777,7 +798,7 @@ function renderMain(){
   if(!isAdmin()){$('#main').innerHTML=viewRole();return}
   $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
   const m=$('#main');
-  if(UI.tab==='sched')m.innerHTML=UI.mode==='week'?viewWeek():viewBoard();
+  if(UI.tab==='sched'){if(UI.mode==='pub'&&!SUPA_ON)UI.mode='board';m.innerHTML=UI.mode==='week'?viewWeek():viewBoard()}
   else if(UI.tab==='doctors')m.innerHTML=viewDoctors();
   else m.innerHTML=viewAssistants();
 }
@@ -788,10 +809,10 @@ function exampleBanner(){
 }
 function schedHead(){
   return`<div class="row"><div><h1>Расписание</h1></div><span class="spacer"></span>
-  <div class="seg" role="group"><button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">График</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
+  <div class="seg" role="group">${SUPA_ON?`<button data-act="mode" data-v="pub" aria-pressed="${UI.mode==='pub'}">Опубликованное</button>`:''}<button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">${SUPA_ON?'Редактирование'+(unpubCount()?' •':''):'График'}</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
 }
 function cellHTML(d,cl,ch){
-  if(!isAdmin())return cellRO(d,cl,ch);
+  if(!editing())return cellRO(d,cl,ch);
   const arr=cellArr(d,cl.id,ch,false);const dayExists=!!(dayObj(d,false)||{})[cl.id];const st=SET();let h='';
   arr.forEach(en=>{
     const a=asById(en.assistantId);const wr=a?entryWarn(d,en):'';const miss=MISS.get(en.id);
@@ -847,7 +868,7 @@ function viewBoard(){
   const load=loadMap();
   let board;
   if(!cls.length){board=`<div class="empty-board"><h2>Нет клиник</h2><p>Добавьте клинику, укажите количество кресел и обычную неделю врачей.</p><button class="btn primary" data-act="mode" data-v="week">Настроить клиники</button></div>`}
-  else if(!has){board=isAdmin()?`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`:`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} графика пока нет</h2><p>Переключите период стрелками.</p></div>`}
+  else if(!has){board=editing()?`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`:`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} графика пока нет</h2><p>Переключите период стрелками.</p></div>`}
   else{
     board=UI.orient==='v'?boardV(dates,cls):boardH(dates,cls);
   }
@@ -857,20 +878,23 @@ function viewBoard(){
       const av=S.avail[a.id]||{};const days=range(UI.from,UI.to).filter(d=>av[d]).length;
       return`<button class="ra" data-act="avail" data-a="${a.id}"><span class="nm">${esc(a.name)}</span><span class="meta num">${days?`${days} дн. может`:'<span class="z">даты не отмечены</span>'}<br>${load[a.id]||0} смен назначено${st.rates&&cost[a.id]?' · '+rub(cost[a.id]):''}</span></button>`}).join('')||`<div class="foot">Ассистентов пока нет — добавьте их в разделе «Ассистенты».</div>`}</div>
     <div class="foot"><button class="btn sm" data-act="rail-add">+ Добавить ассистента</button><br><br>Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
+  const unp=editing()&&SUPA_ON?unpubDays():[];
   return`${isAdmin()?exampleBanner()+schedHead():'<div><h1>Общий график</h1><p class="sub">Только просмотр. Ваши смены выделены.</p></div>'}
+  ${isAdmin()&&usePub()?`<div class="note info">Так расписание видят сотрудники${S.cfg.publishedAt?' · последняя публикация '+esc(S.cfg.publishedAt):''}. Менять его — во вкладке «Редактирование», потом «Опубликовать».</div>`:''}
+  ${unp.length?`<div class="note">Не опубликовано изменений: ${unp.length} дн. (${unp.slice(0,6).map(fmt).join(', ')}${unp.length>6?'…':''}). Сотрудники пока видят прежний вариант.<span class="spacer"></span><button class="btn sm primary" data-act="publish">Опубликовать</button></div>`:''}
   <div class="toolbar">
     <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
       <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
       <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>
     <span class="spacer"></span>
-    ${isAdmin()?`<button class="btn" data-act="open-gen">Сформировать</button>
-    <button class="btn primary" data-act="open-auto">Автозаполнение</button>`:''}
+    ${editing()?`<button class="btn" data-act="open-gen">Сформировать</button>
+    <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button><button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
     <button class="btn" data-act="export">Скачать / печать</button>
     <button class="btn ghost" data-act="copy" title="Скопировать таблицу для Excel">Копировать</button>
   </div>
   ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
     <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
-  <div class="sched" ${isAdmin()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap">${board}</div>${isAdmin()?rail:''}</div>`;
+  <div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap">${board}</div>${editing()?rail:''}</div>`;
 }
 function viewWeek(){
   const cls=S.cfg.clinics;
@@ -1098,16 +1122,19 @@ function availCal(aid){
   const av=S.avail[aid]||{};const[y,m]=AV.month.split('-').map(Number);
   const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const off=(first.getDay()+6)%7;
   const mine=ROLE()==='assistant';const assigned=new Set();
-  if(mine){Object.keys(S.months).forEach(ym=>Object.keys(S.months[ym]).forEach(d=>forEntries(d,en=>{if(en.assistantId===aid)assigned.add(d)})))}
+  if(mine){const src=monthsSrc();Object.keys(src).forEach(ym=>Object.keys(src[ym]).forEach(d=>forEntries(d,en=>{if(en.assistantId===aid)assigned.add(d)})))}
   let cal=WD.map((w,i)=>`<button class="wh" data-act="av-wd" data-v="${i}" title="Отметить все ${w} месяца">${w}</button>`).join('');
   for(let i=0;i<off;i++)cal+=`<span class="dd out"></span>`;
   let cnt=0;
   for(let d=1;d<=days;d++){const ds=iso(new Date(y,m-1,d));const v=av[ds];if(v)cnt++;
-    const ring=mine?assigned.has(ds):(ds>=UI.from&&ds<=UI.to);const past=mine&&ds<TODAY;
-    cal+=`<button class="dd ${v||''} ${ring?'inp':''}" data-act="av-day" data-v="${ds}" ${past?'disabled style="opacity:.4"':''} aria-label="${ds} ${v?SH[v].l:'нет'}">${d}${v?`<small>${SH[v].s}</small>`:''}</button>`}
-  return`<div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div>
+    const ring=mine?assigned.has(ds):(ds>=UI.from&&ds<=UI.to);const past=mine&&ds<TODAY;const lk=lockedFor(ds),oc=openFor(ds);
+    cal+=`<button class="dd ${v||''} ${ring?'inp':''} ${lk?'lock':''} ${oc?'coll':''}" data-act="av-day" data-v="${ds}" ${past||(mine&&lk)?'disabled':''} ${past?'style="opacity:.4"':''} aria-label="${ds} ${v?SH[v].l:'нет'}${lk?', закреплено':''}" title="${lk?'Закреплено — менять нельзя':oc?'Отметить до '+fmt(oc.deadline):''}">${d}${v?`<small>${SH[v].s}</small>`:''}</button>`}
+  const coll=activeColl().filter(c=>c.to>=TODAY);
+  const banner=coll.map(c=>`<div class="note ${daysLeft(c.deadline)<=2?'':'info'}" style="margin:0"><span><b>Отметьте даты на ${fmt(c.from)} – ${fmt(c.to)} до ${fmt(c.deadline)}</b> · ${leftText(c)}. После этого даты за этот период закрепятся и менять их будет нельзя.</span></div>`).join('');
+  return`${banner}<div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div>
     <div class="mnav"><button class="btn sm" data-act="av-m" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${MN[m-1]} ${y}</b><button class="btn sm" data-act="av-m" data-v="1" aria-label="Следующий месяц">›</button><span class="spacer"></span><span class="sub num">${cnt} дн.</span></div>
     <div class="cal">${cal}</div>
+    ${(S.cfg.collect||[]).length?`<div class="legend"><span><i class="lg coll"></i> идёт сбор дат</span><span><i class="lg lock"></i> закреплено</span></div>`:''}
     <p class="sub" style="margin:0">Нажмите на день недели в шапке — режим применится ко всем таким дням месяца. ${mine?'Обведены дни, где вы уже стоите в графике: если уберёте такой день, администратор это увидит.':'Обведены дни текущего периода графика.'}</p>`;
 }
 function openAvail(aid){
@@ -1119,11 +1146,66 @@ function openAvail(aid){
 }
 function avSet(ds,v){const aid=AV.aid;S.avail[aid]=S.avail[aid]||{};if(v==='none')delete S.avail[aid][ds];else S.avail[aid][ds]=v}
 function avMonthDays(){const[y,m]=AV.month.split('-').map(Number);const n=new Date(y,m,0).getDate();return Array.from({length:n},(_,i)=>iso(new Date(y,m-1,i+1)))}
-const avEditable=ds=>isAdmin()||ds>=TODAY;
+const avEditable=ds=>isAdmin()||(ds>=TODAY&&!lockedFor(ds));
+
+/* ---------- публикация ---------- */
+function dayCanon(src,d){const x=(src[ymOf(d)]||{})[d];if(!x)return'';const c={};Object.keys(x).forEach(k=>{const ch=x[k];const o={};Object.keys(ch).forEach(n=>{if(ch[n]&&ch[n].length)o[n]=ch[n]});if(Object.keys(o).length)c[k]=o});return Object.keys(c).length?canon(c):''}
+function unpubDays(from,to){if(!SUPA_ON)return[];const a=from||UI.from,b=to||UI.to;
+  // смотрим период на экране и всё будущее, что уже было опубликовано или есть в черновике
+  const ds=new Set(range(a,b));if(!from){[S.months,S.pub].forEach(src=>Object.keys(src).forEach(ym=>Object.keys(src[ym]).forEach(d=>{if(d>=TODAY)ds.add(d)})))}
+  return[...ds].sort().filter(d=>dayCanon(S.months,d)!==dayCanon(S.pub,d))}
+const unpubCount=()=>{try{return isAdmin()&&SUPA_ON?unpubDays().length:0}catch(e){return 0}};
+function openPublish(){
+  let from=UI.from,to=UI.to;
+  M.show(()=>{const ds=range(from,to);const ch=unpubDays(from,to);
+    let empty=0,total=0;withSrc(false,()=>ds.forEach(d=>forEntries(d,en=>{total++;if(!en.assistantId)empty++})));
+    const all=unpubDays();const outside=all.filter(d=>d<from||d>to);
+    return{title:'<h2>Опубликовать расписание</h2><p class="sub">После публикации сотрудники увидят это расписание, а ассистенты и врачи получат уведомления об изменениях в своих сменах.</p>',
+    body:`<div class="row"><label class="f">С<input type="date" id="pbFrom" value="${from}"></label><label class="f">По<input type="date" id="pbTo" value="${to}"></label></div>
+      ${ch.length?`<p>Изменится дней: <b class="num">${ch.length}</b> — ${ch.slice(0,10).map(fmt).join(', ')}${ch.length>10?'…':''}</p>`:'<p class="okline">В этом периоде опубликованное уже совпадает с редактируемым.</p>'}
+      ${empty?`<div class="note">В периоде ${empty} из ${total} смен без ассистента. Их сотрудники увидят как «ассистент не назначен».</div>`:''}
+      ${outside.length?`<p class="sub" style="margin:0">Вне выбранного периода есть ещё неопубликованные дни: ${outside.slice(0,8).map(fmt).join(', ')}${outside.length>8?'…':''}. Расширьте период, если хотите опубликовать и их.</p>`:''}`,
+    foot:`<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="pub-run" ${ch.length?'':'disabled'}>Опубликовать</button>`,
+    bind:r=>{r.querySelector('#pbFrom').onchange=e=>{if(e.target.value){from=e.target.value;if(to<from)to=from;M.refresh()}};r.querySelector('#pbTo').onchange=e=>{if(e.target.value&&e.target.value>=from){to=e.target.value;M.refresh()}}}};
+  });
+  ACT['pub-run']=()=>{const ch=unpubDays(from,to);const yms=new Set();
+    ch.forEach(d=>{const ym=ymOf(d);const src=(S.months[ym]||{})[d];S.pub[ym]=S.pub[ym]||{};if(src)S.pub[ym][d]=clone(src);else delete S.pub[ym][d];yms.add(ym)});
+    yms.forEach(markPub);S.cfg.publishedAt=new Date().toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});markCfg();
+    M.close();toast(`Опубликовано: ${ch.length} дн. Сотрудники уже видят новое расписание`)};
+}
+
+/* ---------- сбор дат с дедлайном ---------- */
+const daysLeft=dl=>Math.round((pd(dl)-pd(TODAY))/864e5);
+const collLocked=c=>TODAY>c.deadline;
+function lockedFor(ds){return(S.cfg.collect||[]).find(c=>collLocked(c)&&ds>=c.from&&ds<=c.to)||null}
+function openFor(ds){return(S.cfg.collect||[]).find(c=>!collLocked(c)&&ds>=c.from&&ds<=c.to)||null}
+const activeColl=()=>(S.cfg.collect||[]).filter(c=>!collLocked(c)).sort((a,b)=>a.deadline<b.deadline?-1:1);
+const leftText=c=>{const n=daysLeft(c.deadline);return n===0?'последний день — сегодня':n===1?'остался 1 день':n<5?`осталось ${n} дня`:`осталось ${n} дней`};
+function openCollect(){
+  let nf={from:UI.from,to:UI.to,deadline:addDays(UI.from,-7)<TODAY?TODAY:addDays(UI.from,-7)};
+  M.show(()=>{const list=(S.cfg.collect||[]).slice().sort((a,b)=>a.from<b.from?1:-1);
+    const filled=c=>S.cfg.assistants.filter(a=>range(c.from,c.to).some(d=>(S.avail[a.id]||{})[d]));
+    return{title:'<h2>Сбор дат от ассистентов</h2><p class="sub">Укажите период и срок, до которого ассистенты должны отметить, когда могут работать. После срока даты этого периода закрепляются: ассистенты их уже не изменят, а вы — можете.</p>',
+    body:`<div class="newp"><b>Новый сбор</b><div class="row">
+        <label class="f">Даты с<input type="date" id="cFrom" value="${nf.from}"></label><label class="f">по<input type="date" id="cTo" value="${nf.to}"></label>
+        <label class="f">Отметить до (включительно)<input type="date" id="cDl" value="${nf.deadline}"></label>
+        <button class="btn primary" data-act="coll-add">Добавить</button></div></div>
+      ${list.length?`<div class="grp"><h3>Периоды<span class="n num">${list.length}</span></h3>${list.map(c=>{const f=filled(c);const miss=S.cfg.assistants.filter(a=>!f.includes(a));
+        return`<div class="urow"><div class="row" style="gap:8px"><span style="flex:1;min-width:0"><span class="nm">${fmt(c.from)} – ${fmt(c.to)}</span><br>
+        <span class="why">${collLocked(c)?`закреплено с ${fmt(addDays(c.deadline,1))}`:`подать до ${fmt(c.deadline)} · ${leftText(c)}`} · отметились ${f.length} из ${S.cfg.assistants.length}${miss.length&&!collLocked(c)?' · нет: '+esc(miss.map(a=>a.name).join(', ')):''}</span></span>
+        <span class="tag ${collLocked(c)?'':'miss'}">${collLocked(c)?'закреплено':'идёт сбор'}</span><button class="btn sm danger" data-act="coll-del" data-v="${c.id}">Удалить</button></div></div>`}).join('')}</div>`:''}`,
+    foot:'<button class="btn primary" data-act="close">Готово</button>',
+    bind:r=>{['cFrom','cTo','cDl'].forEach((id,i)=>r.querySelector('#'+id).onchange=e=>{nf[['from','to','deadline'][i]]=e.target.value})}};
+  },true);
+  ACT['coll-add']=()=>{if(!nf.from||!nf.to||!nf.deadline||nf.to<nf.from){toast('Проверьте даты периода');return}
+    if(nf.deadline<TODAY){toast('Срок подачи уже прошёл — выберите дату не раньше сегодняшней');return}
+    S.cfg.collect=(S.cfg.collect||[]).concat([{id:uid(),from:nf.from,to:nf.to,deadline:nf.deadline}]);markCfg();M.refresh();render();toast('Сбор дат добавлен — ассистенты увидят его у себя')};
+  ACT['coll-del']=b=>{if(!armed(b,'Точно?'))return;S.cfg.collect=S.cfg.collect.filter(c=>c.id!==b.dataset.v);markCfg();M.refresh();render()};
+}
 
 /* ---------- экраны ассистента и врача ---------- */
 function myShifts(field,card){
-  const out=[];Object.keys(S.months).sort().forEach(ym=>Object.keys(S.months[ym]).sort().forEach(d=>{if(d<TODAY)return;
+  const src=monthsSrc();const out=[];Object.keys(src).sort().forEach(ym=>Object.keys(src[ym]).sort().forEach(d=>{if(d<TODAY)return;
     forEntries(d,(en,cl,ch)=>{if(en[field]===card)out.push({d,en,cl,ch})})}));
   return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.en.shift]-SHO[y.en.shift]);
 }
@@ -1143,7 +1225,7 @@ function shiftList(items,kind){
 }
 function viewRole(){
   const role=ROLE(),card=myCard();
-  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'],['all','Общий график']]:[['mine','Мои смены']];
+  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'+(activeColl().some(c=>c.to>=TODAY)?' •':'')],['all','Общий график']]:[['mine','Мои смены']];
   if(!tabs.some(t=>t[0]===UI.rtab))UI.rtab='mine';
   $('#tabs').innerHTML=tabs.length>1?tabs.map(([k,l])=>`<button class="tab" data-act="rtab" data-v="${k}" aria-current="${UI.rtab===k}">${l}</button>`).join(''):'';
   const person=role==='assistant'?asById(card):docById(card);
@@ -1461,13 +1543,15 @@ const ACT={
   'pw-eye':b=>{const i=$('#'+b.dataset.v);if(!i)return;const show=i.type==='password';i.type=show?'text':'password';b.classList.toggle('on',show);b.setAttribute('aria-label',show?'Скрыть пароль':'Показать пароль')},
   'inv-skip':async()=>{INV_STATE=null;INV_HAS_SESSION=false;dropInviteParam();const{data}=await SB.auth.getSession();if(data&&data.session)await afterLogin();else render()},
   'inv-logout':async()=>{await SB.auth.signOut();INV_HAS_SESSION=false;AUTHED=false;ME=null;render()},
+  publish:()=>openPublish(),
+  collect:()=>openCollect(),
   invite:b=>{if(M.open)M.close();openInvite(b.dataset.r||'assistant',b.dataset.c||'')},
   bell:()=>openBell(),
   export:openExport,
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
 };
-const ROLE_OK=new Set(['pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
+const ROLE_OK=new Set(['bell-go','pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
@@ -1528,7 +1612,7 @@ ACT['ex-run']=async()=>{
 
 /* ---------- backup ---------- */
 let BK=null;
-ACT['bk-save']=()=>{const data={app:'grafik-assistentov',v:1,saved:new Date().toISOString(),cfg:S.cfg,avail:S.avail,months:S.months};
+ACT['bk-save']=()=>{const data={app:'grafik-assistentov',v:1,saved:new Date().toISOString(),cfg:S.cfg,avail:S.avail,months:S.months,pub:S.pub};
   saveFile('График ассистентов — копия '+fmt(TODAY)+'.json',JSON.stringify(data))};
 function importBackup(f){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.app!=='grafik-assistentov'||!d.cfg)throw 0;
   BK={data:d,when:d.saved?fmtY(iso(new Date(d.saved))):'?'};M.refresh()}catch(e){toast('Это не файл резервной копии графика')}};r.readAsText(f)}
