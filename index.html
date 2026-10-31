@@ -215,7 +215,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .sh3{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
 .preview{max-width:100%;border:1px solid var(--line);border-radius:8px;display:block}
 .busy{opacity:.6;pointer-events:none}
-/* бумажный вид для экспорта — всегда светлый, как в привычном вордовском графике */
+/* бумажный вид для экспорта — всегда светлый */
 .xp{width:1123px;padding:26px 30px 22px;background:#FFFFFF;color:#000000;font-family:"PT Serif","Times New Roman",Times,serif;font-size:13px;line-height:1.25}
 .xp+.xp{border-top:2px dashed #BBBBBB}
 .xtop{font-weight:700;font-size:13px;margin-bottom:8px}
@@ -364,7 +364,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 00:54'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 00:55'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -1896,7 +1896,7 @@ const TOURS={
     // ── выгрузка
     {act:1,sel:'[data-act=export]',t:'Скачать и печать',x:'Нажмите «Скачать / печать».',wait:()=>M.open},
     {act:1,sel:'.modal .seg:has([data-act=ex-kind])',t:'Что выгрузить',x:'Переключите вид выгрузки — например, на «Постоянный график» — и прочитайте описание под кнопками. Есть ещё «Врачи на период», «Врачи и ассистенты» и «По ассистентам».',init:()=>({k:EX.kind}),wait:c=>EX.kind!==c.k},
-    {sel:'.modal .brush',t:'Формат',x:'PDF — для печати, неделя на лист. Картинка — чтобы сразу вставить в чат клиники. Word — если нужно что-то поправить руками. Вид — как привычный вордовский график: клиники столбцами, дни строками, «Фамилия время кресло».'},
+    {sel:'.modal .brush',t:'Формат',x:'PDF — для печати, неделя на лист. Картинка — чтобы сразу вставить в чат клиники. Word — если нужно что-то поправить руками. В файле клиники идут столбцами, дни — строками, в ячейке «Фамилия время кресло».'},
     {act:1,sel:'.modal .mf [data-act=close]',t:'Закройте',x:'Нажмите «Закрыть» — скачивать сейчас не нужно.',wait:()=>!M.open},
     // ── уведомления и настройки
     {act:1,sel:'#bell',t:'Уведомления',x:'Нажмите на колокольчик.',wait:()=>M.open},
