@@ -2043,24 +2043,19 @@ ACT_LATE.push(()=>{ACT['tour']=()=>{if(M.open)M.close();startTour()}});
 function openPwChange(){
   let err='',busy=false,ok=false;
   M.show(()=>({title:'<h2>Сменить пароль</h2><p class="sub">Вы вошли как <b>'+esc(ME&&ME.login||'')+'</b>.</p>',
-    body:ok?'<p class="okline">Пароль изменён. В следующий раз входите с новым паролем.</p>':`<form id="pwForm" class="loginf">${pwField('pwOld','Текущий пароль','current-password')}${pwField('pwNew','Новый пароль — не короче 6 символов','new-password')}${pwField('pwNew2','Повторите новый пароль','new-password')}
+    body:ok?'<p class="okline">Пароль изменён. В следующий раз входите с новым паролем.</p>':`<form id="pwForm" class="loginf">${pwField('pwNew','Новый пароль — не короче 6 символов','new-password')}${pwField('pwNew2','Повторите новый пароль','new-password')}
       ${err?`<p class="lgerr">${esc(err)}</p>`:''}<button class="btn primary ${busy?'busy':''}">${busy?'Сохраняю…':'Сменить пароль'}</button></form>`,
     foot:'<button class="btn" data-act="close">'+(ok?'Готово':'Отмена')+'</button>',
     bind:r=>{const f=r.querySelector('#pwForm');if(!f)return;f.onsubmit=async e=>{e.preventDefault();e.stopPropagation();if(busy)return;
-      const o=r.querySelector('#pwOld').value,n=r.querySelector('#pwNew').value,n2=r.querySelector('#pwNew2').value;
+      const n=r.querySelector('#pwNew').value,n2=r.querySelector('#pwNew2').value;
       const fail=t=>{err=t;busy=false;M.refresh()};
       if(n.length<6)return fail('Новый пароль должен быть не короче 6 символов');
       if(n!==n2)return fail('Новые пароли не совпадают');
-      if(n===o)return fail('Новый пароль совпадает с текущим');
       busy=true;err='';M.refresh();
-      const u=await SB.auth.getUser();const email=u.data&&u.data.user&&u.data.user.email;
-      if(!email)return fail('Не удалось определить аккаунт. Войдите заново.');
-      const chk=await SB.auth.signInWithPassword({email,password:o});
-      if(chk.error)return fail(/invalid/i.test(chk.error.message)?'Текущий пароль указан неверно':'Не удалось проверить пароль: '+chk.error.message);
       const up=await SB.auth.updateUser({password:n});
       if(up.error)return fail(/weak|short|least/i.test(up.error.message)?'Слишком простой пароль, придумайте другой':'Не удалось сменить пароль: '+up.error.message);
       busy=false;ok=true;M.refresh();toast('Пароль изменён')}}}));
-  setTimeout(()=>$('#pwOld')?.focus(),30);
+  setTimeout(()=>$('#pwNew')?.focus(),30);
 }
 ACT_LATE.push(()=>{ACT['pw-change']=()=>{M.close();openPwChange()}});
 ACT_LATE.forEach(f=>f());
