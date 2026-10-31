@@ -336,8 +336,12 @@ const byName=(a,b)=>a.name.localeCompare(b.name,'ru');
 
 /* ---------- storage ---------- */
 const LKEY='asst-data-v1';
+// одинаковая запись объекта независимо от порядка ключей (база переставляет ключи)
+const canon=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((r,x)=>(r[x]=v[x],r),{}):v);
+// «живая» ссылка: всегда обращается к актуальной записи, даже если данные обновились из базы
+const live=get=>new Proxy({},{get:(t,k)=>{const x=get();return x?x[k]:undefined},set:(t,k,v)=>{const x=get();if(x)x[k]=v;return true},deleteProperty:(t,k)=>{const x=get();if(x)delete x[k];return true}});
 const Store={
-  mode:'local',db:null,dirty:new Set(),ver:{},timers:{},chains:{},readonly:false,
+  mode:'local',db:null,dirty:new Set(),ver:{},timers:{},chains:{},readonly:false,sent:{},
   mark(path){
     if(this.readonly){toast('Нет прав на изменение этих данных');return}
     this.dirty.add(path);this.ver[path]=(this.ver[path]||0)+1;
@@ -354,6 +358,7 @@ const Store={
     const v=this.ver[path];
     if(this.mode==='supa'){
       const body=this.body(path);const prev=this.chains[path]||Promise.resolve();
+      if(body){const l=this.sent[path]=this.sent[path]||[];l.push(canon(body));if(l.length>8)l.shift()}
       this.chains[path]=prev.then(async()=>{
         if(!ORG&&!LEGACY)return;
         const r=body?await SB.from('docs').upsert({path:P(path),data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',P(path));
@@ -468,6 +473,7 @@ async function loadOrgData(){
     const full=(p.new&&p.new.path)||(p.old&&p.old.path);if(!full)return;
     if(LEGACY?full.includes(':'):!full.startsWith(ORG+':'))return;
     const path=LEGACY?full:full.slice(ORG.length+1);if(Store.dirty.has(path))return;
+    if(p.eventType!=='DELETE'&&(Store.sent[path]||[]).includes(canon(p.new.data)))return; // это наше же сохранение
     if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
   }).subscribe();
   setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();
@@ -1006,7 +1012,7 @@ function newPersonHTML(kind,forceOpen){
     <span class="sub">Навыки и остальное можно заполнить потом в карточке.</span></div>`;
 }
 function openTpl(ch,w){
-  const cl=clById(UI.clinic);let arr=clone(cl.template[ch+'-'+w]||[]);
+  const cid=UI.clinic;if(!clById(cid))return;const cl=live(()=>clById(cid));let arr=clone(cl.template[ch+'-'+w]||[]);
   if(!arr.length)arr.push({doctorId:'',shift:'day'});
   NP={open:false,on:d=>{const e=arr.find(x=>!x.doctorId);if(e)e.doctorId=d.id;else if(arr.length<2&&!arr.some(x=>x.shift==='day')){const u=arr[0]?.shift;arr.push({doctorId:d.id,shift:u==='am'?'pm':u==='pm'?'am':'day'})}}};
   M.show(()=>{const ds=S.cfg.doctors.slice().sort(byName);
@@ -1030,7 +1036,7 @@ function openTpl(ch,w){
 /* ---------- modals: doctor / assistant ---------- */
 function armed(b,text){if(!b.classList.contains('armed')){b.classList.add('armed');b.dataset.orig=b.textContent;b.textContent=text||'Точно удалить?';return false}return true}
 function openDoc(id){
-  const d=docById(id);if(!d)return;
+  if(!docById(id))return;const d=live(()=>docById(id));
   TG={doc:{get:()=>d.tags,set:a=>{d.tags=a;markCfg()}}};
   M.show(()=>{const as=S.cfg.assistants.slice().sort(byName);
     return{title:`<h2>Карточка врача</h2>`,
@@ -1046,7 +1052,7 @@ function openDoc(id){
   ACT['d-del']=b=>{if(!armed(b,'Точно удалить? Он пропадёт и из базовой недели'))return;removeDoctors([d.id]);M.close()};
 }
 function openAs(id){
-  const a=asById(id);if(!a)return;
+  if(!asById(id))return;const a=live(()=>asById(id));
   TG={as:{get:()=>a.tags,set:x=>{a.tags=x;markCfg()}}};
   M.show(()=>({title:`<h2>Карточка ассистента</h2>`,
     body:`<div class="row"><label class="f" style="flex:2;min-width:200px">Фамилия И.О.<input type="text" id="aName" value="${esc(a.name)}"></label><label class="f" style="flex:1;min-width:150px">Телефон<input type="tel" id="aPhone" value="${esc(a.phone||'')}"></label></div>
