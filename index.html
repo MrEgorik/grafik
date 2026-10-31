@@ -258,6 +258,8 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .urow+.urow{margin-top:6px}
 .uh{display:flex;flex-direction:column}
 .urow select{max-width:100%}
+.orgname{font-weight:600;color:var(--muted);font-size:13px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.orgname select{font-weight:600;padding:5px 8px;max-width:220px}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -270,6 +272,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 
 <header class="top">
   <div class="brand"><i>A</i>График ассистентов</div>
+  <span class="orgname" id="orgname"></span>
   <nav class="tabs" id="tabs"></nav>
   <div class="store" id="store"><b></b><span>Загрузка…</span></div>
   <button class="btn sm" data-act="settings">Настройки</button>
@@ -341,7 +344,8 @@ const Store={
     if(this.mode==='supa'){
       const body=this.body(path);const prev=this.chains[path]||Promise.resolve();
       this.chains[path]=prev.then(async()=>{
-        const r=body?await SB.from('docs').upsert({path,data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',path);
+        if(!ORG&&!LEGACY)return;
+        const r=body?await SB.from('docs').upsert({path:P(path),data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',P(path));
         if(r.error){toast(/row-level|permission/i.test(r.error.message)?'Нет прав на изменение':'Не удалось сохранить. Проверьте интернет');console.warn(r.error)}
       }).finally(()=>{if(this.ver[path]===v)this.dirty.delete(path)});
       return;
@@ -372,7 +376,11 @@ function splitCfg(){const pub=clone(S.cfg),priv={doctors:{},assistants:{}};
   return{pub,priv}}
 function mergePriv(){S.cfg.doctors.forEach(d=>Object.assign(d,(PRIV.doctors||{})[d.id]||{}));S.cfg.assistants.forEach(a=>Object.assign(a,(PRIV.assistants||{})[a.id]||{}))}
 const ROLE=()=>SUPA_ON?(ME&&ME.role)||'none':'admin';
-const isAdmin=()=>ROLE()==='admin';
+const isAdmin=()=>['admin','owner'].includes(ROLE());
+const isOwner=()=>ROLE()==='owner';
+let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
+const orgName=id=>(ORGS.find(o=>o.id===id)||{}).name||'';
+const P=p=>LEGACY?p:ORG+':'+p; // путь в базе с префиксом организации
 const myCard=()=>ME&&ME.card_id||null;
 const markMonth=ym=>{if(!isAdmin())return;Store.mark('months/'+ym)};
 const markAvail=id=>{if(!isAdmin()&&!(ROLE()==='assistant'&&id===myCard()))return;Store.mark('avail/'+id)};
@@ -415,9 +423,19 @@ async function afterLogin(){
   const mr=await SB.from('members').select('*').eq('user_id',MYID).maybeSingle();
   if(mr.error){console.warn('members',mr.error);ME={role:'admin',login:emailToLogin(ur.data?.user?.email)}} // таблицы участников ещё нет — прежний режим
   else ME=mr.data||{role:'none'};
-  if(!['admin','assistant','doctor'].includes(ME.role)){AUTHED=false;PENDING=true;setStore('warn','Нет доступа');render();return}
+  const orr=await SB.from('orgs').select('*').order('created_at');LEGACY=!!orr.error;ORGS=orr.error?[]:orr.data;
+  if(!['owner','admin','assistant','doctor'].includes(ME.role)||(!LEGACY&&!ME.org_id&&ME.role!=='owner')){AUTHED=false;PENDING=true;setStore('warn','Нет доступа');render();return}
   PENDING=false;
-  const{data,error}=await SB.from('docs').select('path,data');
+  if(LEGACY){ORG='';await loadOrgData();return}
+  ORG=isOwner()&&UI.org&&ORGS.some(o=>o.id===UI.org)?UI.org:(ME.org_id||(ORGS[0]&&ORGS[0].id)||null);
+  if(!ORG){AUTHED=true;setStore('warn','Нет организаций');render();return}
+  await loadOrgData();
+}
+async function loadOrgData(){
+  setStore('','Загрузка…');
+  const pre=LEGACY?'':ORG+':';
+  const{data:raw,error}=LEGACY?await SB.from('docs').select('path,data'):await SB.from('docs').select('path,data').like('path',pre+'%');
+  const data=(raw||[]).filter(r=>LEGACY?!r.path.includes(':'):true).map(r=>({path:r.path.slice(pre.length),data:r.data}));
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
   S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};PRIV={doctors:{},assistants:{}};
   const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
@@ -426,10 +444,13 @@ async function afterLogin(){
   // перенос служебных полей из общего документа в закрытый (один раз)
   if(isAdmin()&&cfgRow&&((cfgRow.data.doctors||[]).some(d=>d.prio||d.block)||(cfgRow.data.assistants||[]).some(a=>PRIV_A.some(k=>a[k]!==undefined))))markCfg();
   if(!isAdmin())UI.rtab=UI.rtab||'mine';
+  MISS.clear();
   if(LIVE)return setStore('on',isAdmin()?'Сохраняется в базе':'Подключено'),render();
   LIVE=true;
   SB.channel('docs-live').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
-    const path=(p.new&&p.new.path)||(p.old&&p.old.path);if(!path||Store.dirty.has(path))return;
+    const full=(p.new&&p.new.path)||(p.old&&p.old.path);if(!full)return;
+    if(LEGACY?full.includes(':'):!full.startsWith(ORG+':'))return;
+    const path=LEGACY?full:full.slice(ORG.length+1);if(Store.dirty.has(path))return;
     if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
   }).subscribe();
   setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();
@@ -439,7 +460,7 @@ function viewLogin(){
   return`<div class="login"><h1>${reg?'Регистрация':'Вход'}</h1><p class="sub">График ассистентов</p>
   <div class="seg"><button type="button" data-act="auth-tab" data-v="in" aria-pressed="${!reg}">Вход</button><button type="button" data-act="auth-tab" data-v="reg" aria-pressed="${reg}">Регистрация</button></div>
   <form id="loginForm" class="loginf">
-  ${reg?`<label class="f">Имя и фамилия<input type="text" id="rgName" autocomplete="name" placeholder="Волкова Анна" required></label>`:''}
+  ${reg?`<label class="f">Код клиники — спросите у ответственного<input type="text" id="rgCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="A1B2C3" required></label><label class="f">Имя и фамилия<input type="text" id="rgName" autocomplete="name" placeholder="Волкова Анна" required></label>`:''}
   <label class="f">Логин${reg?' — придумайте, латиницей':''}<input type="text" id="lgLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="${reg?'volkova':''}" required></label>
   <label class="f">Пароль${reg?' — не короче 6 символов':''}<input type="password" id="lgPass" autocomplete="${reg?'new-password':'current-password'}" required></label>
   ${reg?`<label class="f">Повторите пароль<input type="password" id="lgPass2" autocomplete="new-password" required></label>`:''}
@@ -451,7 +472,7 @@ function viewPending(){
   const blocked=ME&&ME.role==='blocked';
   return`<div class="login"><h1>${blocked?'Доступ закрыт':'Заявка отправлена'}</h1>
   <p>${ME&&ME.name?esc(ME.name)+', в':'В'}ы вошли как <b>${esc(ME&&ME.login||'')}</b>.</p>
-  <p class="sub">${blocked?'Администратор закрыл доступ к программе. Если это ошибка, обратитесь к нему.':'Администратор ещё не открыл доступ. Как только откроет, нажмите «Проверить».'}</p>
+  <p class="sub">${blocked?'Администратор закрыл доступ к программе. Если это ошибка, обратитесь к нему.':ME&&ME.role==='pending'&&!ME.org_id?'Код клиники не найден, поэтому заявку видит только главный администратор. Сообщите ему или ответственному своей клиники.':'Ответственный клиники ещё не открыл доступ. Как только откроет, нажмите «Проверить».'}</p>
   <div class="row">${blocked?'':'<button class="btn primary" data-act="auth-check">Проверить</button>'}<button class="btn" data-act="logout">Выйти</button></div></div>`;
 }
 const keepVals=ids=>{const v={};ids.forEach(i=>{const e=$('#'+i);if(e&&e.type!=='password')v[i]=e.value});return()=>Object.entries(v).forEach(([i,x])=>{const e=$('#'+i);if(e)e.value=x})};
@@ -466,14 +487,14 @@ async function doLogin(){
 }
 async function doRegister(){
   if(!SB||LOGIN_BUSY)return;
-  const name=$('#rgName').value.trim(),login=$('#lgLogin').value.trim().toLowerCase(),p1=$('#lgPass').value,p2=$('#lgPass2').value;
-  const restore=keepVals(['rgName','lgLogin']);
+  const name=$('#rgName').value.trim(),login=$('#lgLogin').value.trim().toLowerCase(),p1=$('#lgPass').value,p2=$('#lgPass2').value,code=$('#rgCode').value.trim().toUpperCase();
+  const restore=keepVals(['rgCode','rgName','lgLogin']);
   const fail=t=>{LOGIN_ERR=t;LOGIN_OK='';render();restore()};
   if(!LOGIN_RE.test(login))return fail('Логин: от 3 до 30 символов, латинские буквы, цифры, точка, дефис или _');
   if(p1.length<6)return fail('Пароль должен быть не короче 6 символов');
   if(p1!==p2)return fail('Пароли не совпадают');
   LOGIN_BUSY=true;LOGIN_ERR='';render();restore();
-  const{data,error}=await SB.auth.signUp({email:loginToEmail(login),password:p1,options:{data:{name}}});
+  const{data,error}=await SB.auth.signUp({email:loginToEmail(login),password:p1,options:{data:{name,code}}});
   LOGIN_BUSY=false;
   if(error){const m=error.message||'';
     return fail(/registered|exists/i.test(m)?'Такой логин уже занят, придумайте другой':/not allowed|disabled/i.test(m)?'Регистрация сейчас выключена администратором':/invalid/i.test(m)?'Этот логин не подошёл, попробуйте другой':'Не удалось зарегистрироваться: '+m)}
@@ -481,16 +502,16 @@ async function doRegister(){
   await afterLogin();
 }
 /* управление пользователями (для администратора) */
-const ROLE_L={pending:'Ожидает',admin:'Администратор',assistant:'Ассистент',doctor:'Врач',blocked:'Доступ закрыт'};
+const ROLE_L={pending:'Ожидает',owner:'Главный администратор',admin:'Ответственный',assistant:'Ассистент',doctor:'Врач',blocked:'Доступ закрыт'};
 function openUsers(){
   let list=null,err='';const draft={};
-  const load=async()=>{const r=await SB.from('members').select('*').order('created_at');if(r.error)err=r.error.message;else{list=r.data;list.forEach(u=>draft[u.user_id]={role:u.role,card:u.card_id||''})}if(M.open)M.refresh()};
+  const load=async()=>{const r=await SB.from('members').select('*').order('created_at');if(r.error)err=r.error.message;else{list=LEGACY?r.data:r.data.filter(u=>u.org_id===ORG||(isOwner()&&!u.org_id));list.forEach(u=>draft[u.user_id]={role:u.role,card:u.card_id||''})}if(M.open)M.refresh()};
   const cardName=(role,id)=>role==='assistant'?asById(id)?.name:role==='doctor'?docById(id)?.name:'';
   const row=u=>{const dr=draft[u.user_id];const self=u.user_id===MYID;const changed=dr.role!==u.role||(dr.card||'')!==(u.card_id||'');
-    const cards=dr.role==='assistant'?S.cfg.assistants:dr.role==='doctor'?S.cfg.doctors:null;
-    return`<div class="urow"><div class="uh"><span class="nm">${esc(u.name||u.login)}</span><span class="why">логин: ${esc(u.login)}${self?' · это вы':''}</span>
+    const cards=dr.role==='assistant'?S.cfg.assistants:dr.role==='doctor'?S.cfg.doctors:null;const fixed=self||u.role==='owner';
+    return`<div class="urow"><div class="uh"><span class="nm">${esc(u.name||u.login)}</span><span class="why">логин: ${esc(u.login)}${self?' · это вы':''}${!u.org_id?' · код клиники не указан или неверный':''}</span>
       ${u.role!=='pending'&&!changed?`<span class="why">${ROLE_L[u.role]||u.role}${cardName(u.role,u.card_id)?' · '+esc(cardName(u.role,u.card_id)):''}</span>`:''}</div>
-      ${self?'':`<div class="row" style="gap:6px">
+      ${fixed?'':`<div class="row" style="gap:6px">
         <select class="urole" data-u="${u.user_id}" aria-label="Роль">${(u.role==='pending'?['pending']:[]).concat(['assistant','doctor','admin','blocked']).map(r=>`<option value="${r}" ${dr.role===r?'selected':''}>${r==='pending'?'— выберите роль —':ROLE_L[r]}</option>`).join('')}</select>
         ${cards?`<select class="ucard" data-u="${u.user_id}" aria-label="Карточка"><option value="">— чья карточка —</option>${cards.slice().sort(byName).map(c=>`<option value="${c.id}" ${dr.card===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
         ${changed?`<button class="btn sm primary" data-act="u-save" data-u="${u.user_id}">${u.role==='pending'?'Дать доступ':'Сохранить'}</button>`:''}
@@ -499,20 +520,43 @@ function openUsers(){
     let body;
     if(err)body=`<div class="note">Не удалось загрузить список: ${esc(err)}</div>`;
     else if(!list)body='<p class="sub">Загрузка…</p>';
-    else{const G=[['Ожидают доступа',u=>u.role==='pending'],['С доступом',u=>['admin','assistant','doctor'].includes(u.role)],['Доступ закрыт',u=>u.role==='blocked']];
+    else{const G=[['Ожидают доступа',u=>u.role==='pending'],['С доступом',u=>['owner','admin','assistant','doctor'].includes(u.role)],['Доступ закрыт',u=>u.role==='blocked']];
       body=G.map(([t,f],i)=>{const arr=list.filter(f);if(!arr.length&&i)return'';return`<div class="grp"><h3>${t}<span class="n num">${arr.length}</span></h3>${arr.map(row).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('')}
-    return{title:'<h2>Пользователи</h2><p class="sub">Новые люди регистрируются сами на экране входа. Выберите роль и, для ассистента или врача, его карточку.</p>',
+    const code=(ORGS.find(o=>o.id===ORG)||{}).code||'';
+    return{title:`<h2>Пользователи · ${esc(orgName(ORG))}</h2><p class="sub">Сотрудники регистрируются сами на экране входа с кодом клиники${code?` <b class="num" style="color:var(--ink);letter-spacing:.08em">${esc(code)}</b>`:''}. Выберите роль и, для ассистента или врача, его карточку.</p>`,
       body,foot:'<button class="btn" data-act="u-reload">Обновить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>',
       bind:r=>{r.querySelectorAll('.urole').forEach(x=>x.onchange=()=>{const d=draft[x.dataset.u];d.role=x.value;if(!['assistant','doctor'].includes(d.role))d.card='';else if(d.card&&!(d.role==='assistant'?asById(d.card):docById(d.card)))d.card='';M.refresh()});
         r.querySelectorAll('.ucard').forEach(x=>x.onchange=()=>{draft[x.dataset.u].card=x.value;M.refresh()})}};
   },true);
-  const save=async(uid,role,card)=>{const r=await SB.from('members').update({role,card_id:card||null}).eq('user_id',uid);
+  const save=async(uid,role,card)=>{const r=await SB.from('members').update(LEGACY?{role,card_id:card||null}:{role,card_id:card||null,org_id:ORG}).eq('user_id',uid);
     if(r.error)toast(/card_id/.test(r.error.message)?'Сначала выполните новый SQL в Supabase':'Не удалось изменить: '+r.error.message);else toast(role==='blocked'?'Доступ закрыт':'Сохранено');await load()};
   ACT['u-reload']=()=>{list=null;M.refresh();load()};
   ACT['u-save']=b=>{const d=draft[b.dataset.u];if(d.role==='pending'){toast('Выберите роль');return}
     if(['assistant','doctor'].includes(d.role)&&!d.card){toast('Выберите, чья это карточка');return}save(b.dataset.u,d.role,d.card)};
   ACT['u-reject']=b=>save(b.dataset.u,'blocked','');
   load();
+}
+async function switchOrg(id){if(!isOwner()||id===ORG)return;
+  if(Store.dirty.size){toast('Подождите секунду — сохраняются изменения');render();return}
+  ORG=id;UI.org=id;saveUI();if(M.open)M.close();
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};PRIV={doctors:{},assistants:{}};normalize();render();await loadOrgData()}
+const genCode=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';const r=crypto.getRandomValues(new Uint8Array(6));r.forEach(x=>c+=A[x%A.length]);return c};
+function openOrgs(){
+  let busy=false;
+  M.show(()=>({title:'<h2>Организации</h2><p class="sub">Каждая организация видит только свои графики, врачей и ассистентов. Код нужен сотрудникам для регистрации.</p>',
+    body:`${ORGS.map(o=>`<div class="urow"><div class="row" style="gap:8px"><input type="text" class="orgn" data-v="${o.id}" value="${esc(o.name)}" style="flex:1;min-width:160px" aria-label="Название">
+      <span class="sub">код</span><b class="num" style="letter-spacing:.08em">${esc(o.code)}</b><button class="btn sm" data-act="org-copy" data-v="${esc(o.code)}">Копировать</button>
+      ${o.id===ORG?'<span class="sub">открыта</span>':`<button class="btn sm" data-act="org-open" data-v="${o.id}">Открыть</button>`}</div></div>`).join('')||'<p class="sub">Пока ни одной.</p>'}
+      <form id="orgNew" class="row" style="gap:6px"><input type="text" id="orgNewName" placeholder="Название новой организации" style="flex:1;min-width:180px"><button class="btn primary ${busy?'busy':''}">Создать</button></form>
+      <p class="sub" style="margin:0">Чтобы назначить ответственного: откройте организацию, дайте ему её код, а когда он зарегистрируется — в «Пользователях» выберите роль «Ответственный».</p>`,
+    foot:'<button class="btn primary" data-act="close">Готово</button>',
+    bind:r=>{r.querySelectorAll('.orgn').forEach(i=>i.onchange=async()=>{const n=i.value.trim();if(!n)return;const x=await SB.from('orgs').update({name:n}).eq('id',i.dataset.v);
+      if(x.error)toast('Не удалось переименовать');else{const o=ORGS.find(o=>o.id===i.dataset.v);if(o)o.name=n;render();toast('Название сохранено')}});
+      r.querySelector('#orgNew').onsubmit=async e=>{e.preventDefault();e.stopPropagation();const n=r.querySelector('#orgNewName').value.trim();if(!n||busy)return;busy=true;M.refresh();
+        const o={id:'o'+uid().slice(0,8),name:n,code:genCode()};const x=await SB.from('orgs').insert(o);busy=false;
+        if(x.error){toast('Не удалось создать: '+x.error.message);M.refresh();return}ORGS.push(o);M.refresh();render();toast('Организация создана, код '+o.code)}}}),true);
+  ACT['org-open']=b=>switchOrg(b.dataset.v);
+  ACT['org-copy']=async b=>{try{await navigator.clipboard.writeText(b.dataset.v);toast('Код скопирован')}catch(e){toast('Код: '+b.dataset.v)}};
 }
 async function initStore(){
   if(SUPA_ON){await initSupa();return}
@@ -581,6 +625,8 @@ function entryWarn(date,en){
 /* ---------- render ---------- */
 function render(){
   const sb=document.querySelector('[data-act=settings]');if(sb)sb.hidden=SUPA_ON&&!AUTHED;
+  const on=$('#orgname');if(on)on.innerHTML=SUPA_ON&&AUTHED&&ORG?(isOwner()&&ORGS.length>1?`<select id="orgSel" aria-label="Организация">${ORGS.map(o=>`<option value="${o.id}" ${o.id===ORG?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`:esc(orgName(ORG))):'';
+  if(SUPA_ON&&AUTHED&&!ORG&&!LEGACY){$('#tabs').innerHTML='';$('#main').innerHTML=`<div class="login"><h1>Организаций пока нет</h1><p class="sub">Создайте первую организацию.</p><button class="btn primary" data-act="orgs">Организации</button></div>`;return}
   if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=PENDING?viewPending():viewLogin();return}
   if(!isAdmin()){$('#main').innerHTML=viewRole();return}
   $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
@@ -1051,7 +1097,7 @@ function openSettings(){
       <div><h3 class="sh3">Время смен в файлах</h3>
       ${sw('sTimes',st.useTimes!==false,'Писать часы вместо «утро / вечер»','Например «Смирнов 9-14 2». Если выключить, будет «Смирнов утро 2».')}
       <div class="row" id="timesRow">${['am','pm','day'].map(k=>`<label class="f" style="flex:1;min-width:100px">${SH[k].l}<input type="text" class="stime" data-k="${k}" value="${esc((st.times||{})[k]||'')}" ${st.useTimes===false?'disabled':''}></label>`).join('')}</div></div>
-      ${SUPA_ON&&AUTHED?`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вы вошли как <b>${esc(ME&&ME.login||'')}</b></span><span class="spacer"></span><button class="btn sm" data-act="users">Пользователи</button><button class="btn sm" data-act="logout">Выйти</button></div></div>`:''}
+      ${SUPA_ON&&AUTHED?`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вы вошли как <b>${esc(ME&&ME.login||'')}</b></span><span class="spacer"></span>${isOwner()?'<button class="btn sm" data-act="orgs">Организации</button>':''}<button class="btn sm" data-act="users">Пользователи</button><button class="btn sm" data-act="logout">Выйти</button></div></div>`:''}
       <div><h3 class="sh3">Резервная копия</h3><p class="sub" style="margin:0 0 8px">Все врачи, ассистенты, даты и графики в одном файле. Так данные переносятся между онлайн- и офлайн-версией.</p>
       <div class="row"><button class="btn" data-act="bk-save">Сохранить в файл</button><label class="btn" for="bkFile" style="cursor:pointer">Загрузить из файла</label><input type="file" id="bkFile" accept=".json,application/json" hidden></div>
       ${BK?`<div class="note" style="margin-top:8px">Файл от ${esc(BK.when)}: врачей ${BK.data.cfg.doctors.length}, ассистентов ${BK.data.cfg.assistants.length}. Текущие данные будут заменены.<span class="spacer"></span><button class="btn sm" data-act="bk-cancel">Отмена</button><button class="btn sm danger" data-act="bk-apply">Заменить</button></div>`:''}</div>`,
@@ -1249,6 +1295,7 @@ const ACT={
   settings:openSettings,
   logout:async()=>{if(M.open)M.close();if(SB)await SB.auth.signOut();AUTHED=false;PENDING=false;ME=null;LOGIN_ERR='';LOGIN_OK='';render()},
   users:()=>{M.close();openUsers()},
+  orgs:()=>{if(M.open)M.close();openOrgs()},
   'auth-tab':b=>{AUTH_TAB=b.dataset.v;LOGIN_ERR='';LOGIN_OK='';render()},
   'auth-check':()=>afterLogin(),
   export:openExport,
@@ -1260,6 +1307,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(
   if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
 document.addEventListener('change',e=>{
+  if(e.target.id==='orgSel'){switchOrg(e.target.value);return}
   if(e.target.id==='pFrom'&&e.target.value){UI.from=e.target.value;if(UI.to<UI.from)UI.to=UI.from;MISS.clear();saveUI();render()}
   if(e.target.id==='pTo'&&e.target.value){UI.to=e.target.value<UI.from?UI.from:e.target.value;MISS.clear();saveUI();render()}
 });
@@ -1267,6 +1315,7 @@ document.addEventListener('input',e=>{if(e.target.id==='clName'){const c=clById(
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id&&e.target.id.startsWith('newTag-')){e.preventDefault();ACT['tg-new']({dataset:{k:e.target.id.slice(7)}})}});
 document.addEventListener('submit',e=>{e.preventDefault();
   if(e.target.id==='loginForm'){AUTH_TAB==='reg'?doRegister():doLogin();return}
+  if(e.target.id==='orgNew')return;
   if(e.target.id==='addDoc'){const n=$('#newDoc').value.trim();if(!n)return;const d={id:uid(),name:n,tags:[],prio:[],block:[]};S.cfg.doctors.push(d);markCfg();render();openDoc(d.id)}
   if(e.target.id==='addAs'){const n=$('#newAs').value.trim();if(!n)return;const a={id:uid(),name:n,tags:[]};S.cfg.assistants.push(a);markCfg();render();openAs(a.id)}
 });
