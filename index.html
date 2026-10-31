@@ -320,7 +320,13 @@ body.has-box .top{position:static}
 .board.dens-l td.c{width:214px;min-width:214px;padding:7px}
 .board.amap.dens-l td{min-width:60px;padding:9px 6px}
 .as.empty.offer{border-style:solid;border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:600}
-#tour{position:fixed;inset:0;z-index:60}
+#tour{position:fixed;inset:0;z-index:60;pointer-events:none}
+#tour .t-blk,#tour .t-cover{position:fixed;pointer-events:auto;background:transparent}
+#tour .t-tip{pointer-events:auto}
+#tour .t-hole.act{animation:tpulse 1.6s ease-in-out infinite}
+@keyframes tpulse{0%,100%{box-shadow:0 0 0 9999px rgb(8 18 20/.62),0 0 0 3px var(--accent)}50%{box-shadow:0 0 0 9999px rgb(8 18 20/.62),0 0 0 7px color-mix(in srgb,var(--accent) 45%,transparent)}}
+#tour .t-do{display:inline-block;background:var(--accent);color:var(--accent-ink);border-radius:5px;padding:1px 6px;font-size:11px;margin-right:4px}
+#tour .t-tip.done{outline:3px solid var(--ok)}
 #tour .t-hole{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgb(8 18 20/.62),0 0 0 3px var(--accent);transition:left .42s cubic-bezier(.4,0,.2,1),top .42s cubic-bezier(.4,0,.2,1),width .42s cubic-bezier(.4,0,.2,1),height .42s cubic-bezier(.4,0,.2,1);pointer-events:none}
 #tour .t-tip{position:fixed;width:min(360px,calc(100vw - 24px));background:var(--surface);color:var(--ink);border-radius:14px;padding:16px 16px 12px;box-shadow:0 18px 50px rgb(0 0 0/.35);transition:opacity .2s ease,transform .2s ease,left .42s cubic-bezier(.4,0,.2,1),top .42s cubic-bezier(.4,0,.2,1)}
 #tour .t-tip.fade{opacity:0;transform:translateY(6px)}
@@ -331,7 +337,7 @@ body.has-box .top{position:static}
 #tour .t-tip p{margin:0 0 12px;color:var(--ink);line-height:1.5}
 #tour .t-n{font-size:12px;color:var(--muted);font-weight:600}
 #tour .t-btns{display:flex;gap:6px;align-items:center}
-@media (prefers-reduced-motion:reduce){#tour .t-hole,#tour .t-tip{transition:none}#tour.in,#tour.out{animation:none}}
+@media (prefers-reduced-motion:reduce){#tour .t-hole,#tour .t-tip{transition:none}#tour.in,#tour.out,#tour .t-hole.act{animation:none}}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -358,7 +364,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 00:12'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 00:19'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -1791,7 +1797,7 @@ ACT['bk-apply']=()=>{if(!BK)return;const d=BK.data;
 
 ACT['av-brush']=b=>{AV.brush=b.dataset.v;AV.refresh()};
 ACT['av-day']=b=>{const ds=b.dataset.v;if(!avEditable(ds))return;const cur=(S.avail[AV.aid]||{})[ds];avSet(ds,cur===AV.brush?'none':AV.brush);markAvail(AV.aid);AV.refresh()};
-ACT['av-wd']=b=>{const w=+b.dataset.v;avMonthDays().filter(d=>wdOf(d)===w&&avEditable(d)).forEach(d=>avSet(d,AV.brush));markAvail(AV.aid);AV.refresh()};
+ACT['av-wd']=b=>{AV.lastWd=Date.now();const w=+b.dataset.v;avMonthDays().filter(d=>wdOf(d)===w&&avEditable(d)).forEach(d=>avSet(d,AV.brush));markAvail(AV.aid);AV.refresh()};
 ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);AV.refresh()};
 ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;avMonthDays().filter(avEditable).forEach(d=>avSet(d,'none'));markAvail(AV.aid);AV.refresh()};
 ACT['np-open']=()=>{NP.open=true;M.refresh();setTimeout(()=>$('#npName')?.focus(),20)};
@@ -1816,50 +1822,62 @@ document.addEventListener('wheel',e=>{const th=e.target.closest('.scrollbox thea
   const box=th.closest('.scrollbox');if(box.scrollWidth<=box.clientWidth)return;e.preventDefault();box.scrollLeft+=e.deltaY},{passive:false});
 /* ---------- обучение: подсветка и подсказки ---------- */
 const go=(o)=>()=>{Object.assign(UI,o);if(M.open)M.close();render()};
+// шаг с act:true — задание: пользователь сам нажимает подсвеченное, обучение ждёт wait()
 const TOURS={
   admin:[
-    {t:'Добро пожаловать!',x:'Покажу, как устроена программа — это займёт пару минут. Чтобы было нагляднее, на время обучения я заполнил программу примером. Ваши данные не тронуты, а пример исчезнет в конце. Листать можно кнопками ниже или стрелками на клавиатуре.'},
-    {sel:'#tabs',t:'Три раздела',x:'«Расписание» — графики. «Врачи» и «Ассистенты» — карточки людей: имена, навыки, кого к кому ставить.',pre:go({tab:'sched',mode:'board'})},
-    {sel:'#addDoc',t:'Врачи',x:'Впишите ФИО и нажмите «Добавить врача». В карточке врача — его навыки (например, «Имплантация»), приоритетные ассистенты, кого не ставить, и кнопка «Пригласить в программу».',pre:go({tab:'doctors'})},
-    {sel:'#addAs',t:'Ассистенты',x:'Так же заводятся ассистенты. В карточке — навыки, ставка (если включена в настройках), даты работы и ссылка-приглашение.',pre:go({tab:'assistants'})},
-    {sel:'[data-act=mode][data-v=week]',t:'Базовая неделя и клиники',x:'Здесь вы один раз описываете обычную неделю: клиники, сколько в них кресел и какой врач в какой день сидит в каком кресле.',pre:go({tab:'sched',mode:'week'})},
-    {sel:'.tpl,[data-act=clinic-add]',t:'Сетка «кресла × дни недели»',x:'Нажмите на ячейку — выберите врача и режим: утро, вечер или весь день. В одно кресло можно поставить двух врачей: утро + вечер. Нового врача можно создать прямо отсюда.'},
-    {sel:'[data-act=mode][data-v=board]',t:'Редактирование графика',x:'Рабочий черновик. Пока вы здесь подбираете ассистентов, сотрудники ничего не видят — до публикации.',pre:go({tab:'sched',mode:'board'})},
-    {sel:'.period',t:'Период',x:'Выберите даты, с которыми работаете. Стрелки сдвигают период на неделю.'},
-    {sel:'[data-act=open-gen]',t:'Сформировать',x:'Создаёт график на выбранный период из базовой недели: врачи встают по своим креслам, остаётся расставить ассистентов.'},
-    {sel:'.as.empty,.boardwrap',t:'Выбор ассистента',x:'Нажмите «+ ассистент» под врачом. Список разбит на группы: приоритет, могут, заняты у другого врача, отметили другое время, не отметили день. Нажатие на имя врача — изменить смену или задачи дня.'},
+    {t:'Добро пожаловать!',x:'Сейчас вы сами пройдёте основные действия — я буду подсказывать, куда нажать. Чтобы было на чём тренироваться, программа заполнена примером: ваши данные не тронуты, а всё, что вы сделаете сейчас, исчезнет в конце.',pre:go({tab:'sched',mode:'board'})},
+    {act:1,sel:'[data-act=tab][data-v=doctors]',t:'Откройте раздел «Врачи»',x:'Нажмите на подсвеченную вкладку «Врачи».',wait:()=>UI.tab==='doctors'},
+    {act:1,sel:'#addDoc',t:'Добавьте врача',x:'Впишите любую фамилию — например «Иванов И.И.» — и нажмите «Добавить врача».',init:()=>({n:S.cfg.doctors.length}),wait:c=>S.cfg.doctors.length>c.n},
+    {sel:'.modal',t:'Карточка врача',x:'Здесь навыки врача (они подставляются в его смены), приоритетные ассистенты и кого к нему не ставить. Отсюда же можно пригласить врача в программу.'},
+    {act:1,sel:'.modal .mf [data-act=close]',t:'Закройте карточку',x:'Нажмите «Готово» — всё сохраняется сразу.',wait:()=>!M.open},
+    {act:1,sel:'[data-act=tab][data-v=sched]',t:'Перейдите в «Расписание»',x:'Нажмите на вкладку «Расписание».',wait:()=>UI.tab==='sched'},
+    {act:1,sel:'[data-act=mode][data-v=week]',t:'Откройте «Базовую неделю»',x:'Здесь один раз описывается обычная неделя: клиники, кресла и какой врач когда работает.',wait:()=>UI.mode==='week'},
+    {act:1,sel:'.tcell:has(.plus)',t:'Поставьте врача в кресло',x:'Нажмите на любую пустую ячейку «+ врач».',wait:()=>M.open},
+    {act:1,sel:'.modal .mb',t:'Выберите врача',x:'Выберите врача в списке — например, только что добавленного. Кнопками рядом можно выбрать «Весь день», «Утро» или «Вечер».',wait:()=>[...document.querySelectorAll('.modal .tdoc')].some(x=>x.value)},
+    {act:1,sel:'.modal [data-act=t-save]',t:'Сохраните',x:'Нажмите «Сохранить».',wait:()=>!M.open},
+    {act:1,sel:'[data-act=mode][data-v=board]',t:'Откройте «Редактирование»',x:'Это рабочий черновик графика по датам. Сотрудники его не видят, пока вы не опубликуете.',wait:()=>UI.mode==='board'},
+    {sel:'[data-act=open-gen]',t:'Сформировать',x:'Эта кнопка создаёт график на выбранный период из базовой недели. В примере он уже сформирован, поэтому сразу переходим к ассистентам.'},
+    {act:1,sel:'.as.empty',t:'Поставьте ассистента',x:'Нажмите «+ ассистент» под врачом.',wait:()=>M.open},
+    {sel:'.modal .mb',t:'Кого можно поставить',x:'Список разбит на группы: приоритетные для этого врача, могут в эту смену, заняты у другого врача, отметили другое время, не отметили день. Сверху — самые подходящие.'},
+    {act:1,sel:'.modal .mb',t:'Выберите ассистента',x:'Нажмите на любое имя — лучше из группы «Могут в эту смену».',wait:()=>!M.open},
     {sel:'.sd,.boardwrap thead',t:'Хватает ли людей',x:'Под каждой датой: сколько ассистентов могут и сколько нужно. Зелёный — с запасом, жёлтый — впритык, красный — не хватает.'},
-    {sel:'#rail',t:'Даты ассистентов',x:'Список ассистентов: сколько дней они отметили и сколько смен уже назначено. Нажмите на человека, чтобы отметить его даты вручную.'},
-    {sel:'[data-act=open-auto]',t:'Автозаполнение',x:'Программа сама расставит ассистентов: приоритетные, с нужными навыками, равномерно по нагрузке. Пустые места подсветит красным.'},
+    {act:1,sel:'[data-act=open-auto]',t:'Автозаполнение',x:'Нажмите «Автозаполнение» — программа сама расставит ассистентов на оставшиеся места.',wait:()=>M.open},
+    {act:1,sel:'.modal [data-act=auto-run]',t:'Запустите',x:'Нажмите «Заполнить». Пустые места, для которых никого не нашлось, подсветятся красным.',wait:()=>!M.open},
     {sel:'.zoom,.dens',t:'Вид сетки',x:'Плотно / обычно / просторно и масштаб — чтобы охватить взглядом больше дней или разглядеть детали.'},
-    {sel:'[data-act=collect]',t:'Сбор дат',x:'Укажите период и срок: «отметить даты на 01–15.12 до 25.11». Ассистенты увидят отсчёт, а после срока даты закрепятся — менять их смогут только ответственные.'},
-    {sel:'[data-act=calls]',t:'Клич',x:'Не хватает людей? Отправьте ассистентам свободные смены — они нажмут «Могу выйти», а вы выберете, кого поставить.'},
-    {sel:'[data-act=publish]',t:'Опубликовать',x:'Когда график готов — опубликуйте его за нужный период. Только после этого ассистенты и врачи увидят изменения и получат уведомления.'},
-    {sel:'[data-act=mode][data-v=pub]',t:'Опубликованное',x:'Здесь видно ровно то, что видят сотрудники.'},
-    {sel:'[data-act=mode][data-v=amap]',t:'Доступность',x:'Таблица «ассистенты × даты»: кто когда может, и итог по утру и вечеру — где людей хватает, а где нет.'},
+    {sel:'[data-act=collect]',t:'Сбор дат',x:'Укажите период и срок: «отметить даты на 01–15.12 до 25.11». Ассистенты увидят отсчёт, а после срока даты закрепятся.'},
+    {sel:'[data-act=calls]',t:'Клич',x:'Не хватает людей — отправьте ассистентам свободные смены. Они нажмут «Могу выйти», а вы выберете, кого поставить.'},
+    {act:1,sel:'[data-act=publish]',t:'Опубликуйте',x:'Когда график готов, нажмите «Опубликовать» — только после этого сотрудники его увидят.',wait:()=>M.open},
+    {act:1,sel:'.modal [data-act=pub-run]',t:'Подтвердите публикацию',x:'Здесь видно, сколько дней изменится. Нажмите «Опубликовать».',wait:()=>!M.open},
+    {act:1,sel:'[data-act=mode][data-v=pub]',t:'Что видят сотрудники',x:'Откройте «Опубликованное» — ровно так график видят ассистенты и врачи.',wait:()=>UI.mode==='pub'},
+    {sel:'[data-act=mode][data-v=amap]',t:'Доступность',x:'Таблица «ассистенты × даты»: кто когда может, и итог по утру и вечеру.'},
     {sel:'[data-act=export]',t:'Скачать и печать',x:'PDF для печати, картинка для чатов или Word — в привычном виде «клиники столбцами, дни строками».'},
-    {sel:'#bell',t:'Уведомления',x:'Новые сотрудники, отклики на клич, конфликты в графике, напоминания о сборе дат — всё здесь, со счётчиком.'},
-    {sel:'[data-act=settings]',t:'Настройки',x:'Пользователи и приглашения по ссылке, организации, ставки, время смен, вид графика, резервная копия. Там же — кнопка, чтобы пройти это обучение заново.'},
-    {t:'Готово!',x:'Сейчас пример исчезнет, и вы вернётесь к своим данным. Начните с «Базовой недели»: добавьте клинику, кресла и врачей. Потом — ассистенты, «Сформировать» и «Автозаполнение». Удачи!',pre:go({tab:'sched',mode:'week'})},
+    {sel:'#bell',t:'Уведомления',x:'Новые сотрудники, отклики на клич, конфликты в графике, напоминания о сборе дат.'},
+    {sel:'[data-act=settings]',t:'Настройки',x:'Пользователи и приглашения по ссылке, организации, ставки, время смен, резервная копия и повтор обучения.'},
+    {t:'Готово!',x:'Отлично, вы прошли всё основное. Сейчас пример исчезнет, и вы вернётесь к своим данным. Начните с «Базовой недели»: клиника, кресла, врачи — дальше уже знаете.',pre:go({tab:'sched',mode:'week'})},
   ],
   assistant:[
-    {t:'Добро пожаловать!',x:'Покажу, что здесь есть. Это займёт минуту. На время обучения показан пример — ваши настоящие смены вернутся в конце.'},
-    {sel:'[data-act=rtab][data-v=mine]',t:'Мои смены',x:'Ваши ближайшие смены: дата, время, клиника, кресло и врач.',pre:go({rtab:'mine'})},
-    {sel:'[data-act=rtab][data-v=avail]',t:'Когда могу',x:'Здесь вы отмечаете дни, когда можете работать.',pre:go({rtab:'avail'})},
-    {sel:'.brush',t:'Выберите режим',x:'«Весь день», «Утро» или «Вечер» — как кисточка. Потом нажимайте на дни в календаре. «Стереть» — убрать отметку.'},
-    {sel:'.cal',t:'Календарь',x:'Нажмите на день — он отметится. Нажатие на «Пн», «Вт»… в шапке отмечает все такие дни месяца. Всё сохраняется сразу.'},
-    {sel:'.mycal .note',t:'Срок подачи дат',x:'Если ответственный объявил сбор дат — здесь будет срок и сколько дней осталось. После срока даты закрепляются (заштрихованы), и менять их будет нельзя.'},
-    {sel:'[data-act=rtab][data-v=calls]',t:'Свободные смены',x:'Когда ответственному не хватает людей, здесь появятся смены с кнопкой «Могу выйти».',pre:go({rtab:'mine'})},
-    {sel:'[data-act=rtab][data-v=all]',t:'Общий график',x:'Расписание всей клиники — только просмотр. Ваши смены выделены цветом.',pre:go({rtab:'all'})},
-    {sel:'#bell',t:'Уведомления',x:'Новые и изменённые смены, напоминания о сроке подачи дат и свободные смены.',pre:go({rtab:'mine'})},
+    {t:'Добро пожаловать!',x:'Сейчас вы сами попробуете главное — я подскажу, куда нажать. На время обучения показан пример: ваши настоящие данные вернутся в конце.',pre:go({rtab:'mine'})},
+    {act:1,sel:'[data-act=rtab][data-v=avail]',t:'Откройте «Когда могу»',x:'Здесь вы отмечаете дни, когда можете работать. Нажмите на вкладку.',wait:()=>UI.rtab==='avail'},
+    {act:1,sel:'[data-act=av-brush][data-v=am]',t:'Выберите «Утро»',x:'Режимы работают как кисточка: выбираете режим, потом нажимаете на дни.',wait:()=>AV.brush==='am'},
+    {act:1,sel:'.cal',t:'Отметьте день',x:'Нажмите на любой свободный день в календаре — он отметится как «утро».',init:()=>({v:JSON.stringify(S.avail[myCard()]||{})}),wait:c=>JSON.stringify(S.avail[myCard()]||{})!==c.v},
+    {act:1,sel:'.cal',t:'Сразу все такие дни',x:'Нажмите на день недели в шапке календаря, например «Вт», — отметятся все вторники месяца.',init:()=>({t:Date.now()}),wait:c=>(AV.lastWd||0)>c.t},
+    {sel:'.mycal .note',t:'Срок подачи дат',x:'Если ответственный объявил сбор дат — здесь срок и сколько дней осталось. После срока даты заштрихуются и менять их будет нельзя.'},
+    {act:1,sel:'[data-act=rtab][data-v=calls]',t:'Свободные смены',x:'Когда ответственному не хватает людей, появляется эта вкладка. Откройте её.',wait:()=>UI.rtab==='calls'},
+    {act:1,sel:'.mylist',t:'Откликнитесь',x:'Нажмите «Могу выйти» на любой смене — ответственный увидит отклик.',init:()=>({n:Object.keys(S.offers[myCard()]||{}).length}),wait:c=>Object.keys(S.offers[myCard()]||{}).length>c.n},
+    {act:1,sel:'[data-act=rtab][data-v=mine]',t:'Мои смены',x:'Откройте «Мои смены».',wait:()=>UI.rtab==='mine'},
+    {sel:'.mylist,.boardwrap',t:'Ваши смены',x:'Дата, время, клиника, кресло и врач. Когда график поменяется — придёт уведомление.'},
+    {act:1,sel:'[data-act=rtab][data-v=all]',t:'Общий график',x:'Откройте «Общий график» — расписание всей клиники, ваши смены выделены.',wait:()=>UI.rtab==='all'},
+    {sel:'#bell',t:'Уведомления',x:'Новые и изменённые смены, напоминания о сроке подачи дат и свободные смены.'},
     {sel:'[data-act=settings]',t:'Настройки',x:'Выход из программы и повтор этого обучения.'},
-    {t:'Готово!',x:'Начните с вкладки «Когда могу» — отметьте дни, когда можете работать.',pre:go({rtab:'avail'})},
+    {t:'Готово!',x:'Отлично! Сейчас вернутся ваши настоящие данные. Начните с вкладки «Когда могу» — отметьте дни, когда можете работать.',pre:go({rtab:'avail'})},
   ],
   doctor:[
-    {t:'Добро пожаловать!',x:'Коротко покажу, что здесь есть. На время обучения показан пример — ваши настоящие смены вернутся в конце.'},
-    {sel:'[data-act=rtab][data-v=mine]',t:'Мои смены',x:'Ваши ближайшие смены: дата, время, клиника, кресло и кто вам ассистирует.',pre:go({rtab:'mine'})},
-    {sel:'[data-act=rtab][data-v=all]',t:'Общий график',x:'Расписание всей клиники — только просмотр. Ваши смены выделены цветом. Можно скачать или распечатать.',pre:go({rtab:'all'})},
-    {sel:'#bell',t:'Уведомления',x:'Когда в ваших сменах что-то меняется — например, назначен ассистент — здесь появится уведомление.',pre:go({rtab:'mine'})},
+    {t:'Добро пожаловать!',x:'Коротко покажу, что здесь есть, — нажимать будете сами. На время обучения показан пример.',pre:go({rtab:'mine'})},
+    {sel:'.mylist,.boardwrap',t:'Мои смены',x:'Ваши ближайшие смены: дата, время, клиника, кресло и кто вам ассистирует.'},
+    {act:1,sel:'[data-act=rtab][data-v=all]',t:'Общий график',x:'Откройте «Общий график» — расписание всей клиники.',wait:()=>UI.rtab==='all'},
+    {sel:'.boardwrap',t:'Ваши смены выделены',x:'Здесь видны все врачи и ассистенты. Можно листать период, скачать или распечатать.'},
+    {act:1,sel:'[data-act=rtab][data-v=mine]',t:'Вернитесь к своим сменам',x:'Нажмите «Мои смены».',wait:()=>UI.rtab==='mine'},
+    {sel:'#bell',t:'Уведомления',x:'Когда в ваших сменах что-то меняется — например, назначен ассистент — здесь появится уведомление.'},
     {sel:'[data-act=settings]',t:'Настройки',x:'Выход из программы и повтор этого обучения.'},
     {t:'Готово!',x:'Если что-то непонятно — обратитесь к ответственному за расписание.'},
   ]};
@@ -1912,42 +1930,58 @@ function leaveDemo(){
   $('#demoTag')?.remove();render();
   if(SUPA_ON&&AUTHED&&d.missed)loadOrgData();
 }
-function startTour(){if(TOUR)return;enterDemo();render();TOUR={steps:TOURS[tourRole()],i:0,dir:1,busy:false};showStep(0)}
-function endTour(){try{localStorage.setItem(tourKey(),'1')}catch(e){}TOUR=null;const o=$('#tour');
+function startTour(){if(TOUR)return;enterDemo();render();TOUR={steps:TOURS[tourRole()],i:0,dir:1,busy:false};
+  TOUR.poll=setInterval(tourTick,200);showStep(0)}
+function endTour(){try{localStorage.setItem(tourKey(),'1')}catch(e){}if(TOUR&&TOUR.poll)clearInterval(TOUR.poll);TOUR=null;const o=$('#tour');
   if(o){o.classList.add('out');setTimeout(()=>o.remove(),REDUCED?0:260)}
-  window.removeEventListener('resize',placeStep);window.removeEventListener('scroll',placeStep,true);leaveDemo()}
-function findTarget(sel){if(!sel)return null;for(const q of sel.split(',')){const e=document.querySelector(q.trim());if(e&&e.offsetParent!==null){const r=e.getBoundingClientRect();if(r.width&&r.height)return e}}return null}
+  window.removeEventListener('resize',placeStep);window.removeEventListener('scroll',placeStep,true);if(M.open)M.close();leaveDemo()}
+function findTarget(sel){if(!sel)return null;for(const q of sel.split(',')){let e=null;try{e=document.querySelector(q.trim())}catch(x){}if(e&&e.offsetParent!==null){const r=e.getBoundingClientRect();if(r.width&&r.height)return e}}return null}
+function tourTick(){
+  if(!TOUR||TOUR.busy)return;const s=TOUR.steps[TOUR.i];if(!s)return;
+  if(s.sel&&(!TOUR.el||!document.body.contains(TOUR.el)||TOUR.el.offsetParent===null)){const e=findTarget(s.sel);if(e)TOUR.el=e}
+  placeStep();
+  if(s.act&&s.wait&&s.wait(TOUR.ctx||{})){TOUR.dir=1;TOUR.busy=true;const o=$('#tour');o&&o.querySelector('.t-tip').classList.add('done');setTimeout(()=>{if(TOUR){TOUR.busy=false;showStep(TOUR.i+1)}},REDUCED?0:450)}
+}
 function placeStep(){
-  const o=$('#tour');if(!o||!TOUR)return;const hole=o.querySelector('.t-hole'),tip=o.querySelector('.t-tip');
-  const el=TOUR.el&&document.body.contains(TOUR.el)?TOUR.el:null;const W=innerWidth,H=innerHeight,pad=6;
-  if(!el){hole.style.cssText=`left:${W/2}px;top:${H/2}px;width:0;height:0`;tip.style.left=Math.max(12,(W-tip.offsetWidth)/2)+'px';tip.style.top=Math.max(12,(H-tip.offsetHeight)/2)+'px';return}
+  const o=$('#tour');if(!o||!TOUR)return;const hole=o.querySelector('.t-hole'),tip=o.querySelector('.t-tip'),cover=o.querySelector('.t-cover');const bl=o.querySelectorAll('.t-blk');
+  const el=TOUR.el&&document.body.contains(TOUR.el)?TOUR.el:null;const W=innerWidth,H=innerHeight,pad=6;const s=TOUR.steps[TOUR.i]||{};
+  const setBlk=(x,y,w,h)=>{const r=[[0,0,W,y],[0,y+h,W,H-y-h],[0,y,x,h],[x+w,y,W-x-w,h]];bl.forEach((b,k)=>{const q=r[k];b.style.cssText=`left:${q[0]}px;top:${q[1]}px;width:${Math.max(0,q[2])}px;height:${Math.max(0,q[3])}px`})};
+  if(!el){hole.style.cssText=`left:${W/2}px;top:${H/2}px;width:0;height:0`;setBlk(W/2,H/2,0,0);cover.style.cssText='display:none';tip.style.left=Math.max(12,(W-tip.offsetWidth)/2)+'px';tip.style.top=Math.max(12,(H-tip.offsetHeight)/2)+'px';return}
   const r=el.getBoundingClientRect();const x=Math.max(4,r.left-pad),y=Math.max(4,r.top-pad),w=Math.min(W-8,r.width+pad*2),h=Math.min(H-8,r.height+pad*2);
-  hole.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+  hole.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;hole.classList.toggle('act',!!s.act);
+  setBlk(x,y,w,h);cover.style.cssText=s.act?'display:none':`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
   const tw=tip.offsetWidth,th=tip.offsetHeight;let tx=Math.min(Math.max(12,x+w/2-tw/2),W-tw-12),ty=y+h+12;
   if(ty+th>H-12)ty=y-th-12;if(ty<12){ty=Math.min(H-th-12,Math.max(12,y+h/2-th/2));tx=x+w+12+tw<W?x+w+12:Math.max(12,x-tw-12)}
+  if(ty<12||ty+th>H-12){ty=H-th-12;tx=Math.min(Math.max(12,tx),W-tw-12)}
   tip.style.left=tx+'px';tip.style.top=ty+'px';
 }
 async function showStep(i){
-  if(!TOUR||TOUR.busy)return;const st=TOUR.steps;i=Math.max(0,Math.min(st.length-1,i));TOUR.busy=true;
+  if(!TOUR)return;const st=TOUR.steps;if(i>=st.length){endTour();return}i=Math.max(0,i);TOUR.busy=true;
   let o=$('#tour');const first=!o;
-  if(first){o=document.createElement('div');o.id='tour';o.className='in';o.innerHTML='<div class="t-hole"></div><div class="t-tip fade" role="dialog" aria-modal="true" aria-live="polite"></div>';document.body.appendChild(o);
+  if(first){o=document.createElement('div');o.id='tour';o.className='in';o.innerHTML='<div class="t-hole"></div><div class="t-blk"></div><div class="t-blk"></div><div class="t-blk"></div><div class="t-blk"></div><div class="t-cover"></div><div class="t-tip fade" role="dialog" aria-modal="true" aria-live="polite"></div>';document.body.appendChild(o);
     window.addEventListener('resize',placeStep);window.addEventListener('scroll',placeStep,true)}
   const tip=o.querySelector('.t-tip');
   if(!first){tip.classList.add('fade');await sleep(REDUCED?0:170)}
+  if(!TOUR)return;
   let s,el;
-  for(;;){s=st[i];if(s.pre)s.pre();el=findTarget(s.sel);
-    if(s.sel&&!el&&i>0&&i<st.length-1){i+=TOUR.dir||1;continue}break}
-  TOUR.i=i;
+  for(;;){s=st[i];if(s.pre)s.pre();await sleep(30);el=findTarget(s.sel);
+    if(s.sel&&!el&&i>0&&i<st.length-1){i+=TOUR.dir||1;if(i>=st.length){endTour();return}continue}break}
+  TOUR.i=i;TOUR.ctx=s.init?s.init():{};
   if(el){el.scrollIntoView({block:'center',inline:'nearest',behavior:REDUCED?'auto':'smooth'});await sleep(REDUCED?0:420)}
-  if(!TOUR){return}
-  tip.innerHTML=`<div class="t-n num">${i+1} из ${st.length}</div><h2>${esc(s.t)}</h2><p>${esc(s.x)}</p>
-    <div class="t-btns"><button class="btn sm ghost" data-tour="skip">${i===st.length-1?'Закрыть':'Пропустить'}</button><span class="spacer"></span>${i?'<button class="btn sm" data-tour="prev">Назад</button>':''}<button class="btn sm primary" data-tour="next">${i===st.length-1?'Начать работу':'Далее'}</button></div>`;
-  TOUR.el=el;placeStep();await sleep(REDUCED?0:first?120:300);tip.classList.remove('fade');TOUR.busy=false;
-  setTimeout(()=>tip.querySelector('[data-tour=next]')?.focus({preventScroll:true}),40);
+  if(!TOUR)return;
+  tip.classList.remove('done');
+  tip.innerHTML=`<div class="t-n num">${s.act?'<span class="t-do">Задание</span> ':''}${i+1} из ${st.length}</div><h2>${esc(s.t)}</h2><p>${esc(s.x)}</p>
+    <div class="t-btns"><button class="btn sm ghost" data-tour="skip">${i===st.length-1?'Закрыть':'Выйти из обучения'}</button><span class="spacer"></span>${i&&!s.act?'<button class="btn sm" data-tour="prev">Назад</button>':''}${s.act?'<button class="btn sm ghost" data-tour="next">Пропустить шаг</button>':`<button class="btn sm primary" data-tour="next">${i===st.length-1?'Начать работу':'Далее'}</button>`}</div>`;
+  TOUR.el=el;placeStep();await sleep(REDUCED?0:first?120:300);if(!TOUR)return;tip.classList.remove('fade');TOUR.busy=false;
+  if(!s.act)setTimeout(()=>tip.querySelector('[data-tour=next]')?.focus({preventScroll:true}),40);
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-tour]');if(!b||!TOUR)return;const a=b.dataset.tour;
-  if(a==='skip'){endTour();return}if(TOUR.busy)return;if(a==='next'){TOUR.dir=1;if(TOUR.i>=TOUR.steps.length-1)endTour();else showStep(TOUR.i+1)}if(a==='prev'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
-document.addEventListener('keydown',e=>{if(!TOUR)return;if(e.key==='Escape'){e.stopPropagation();endTour()}else if(TOUR.busy)return;else if(e.key==='ArrowRight'){TOUR.dir=1;TOUR.i>=TOUR.steps.length-1?endTour():showStep(TOUR.i+1)}else if(e.key==='ArrowLeft'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
+  if(a==='skip'){endTour();return}if(TOUR.busy)return;
+  if(a==='next'){TOUR.dir=1;const s=TOUR.steps[TOUR.i];if(s&&s.act&&M.open&&!(TOUR.steps[TOUR.i+1]||{}).sel?.includes('.modal'))M.close();if(TOUR.i>=TOUR.steps.length-1)endTour();else showStep(TOUR.i+1)}
+  if(a==='prev'){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
+document.addEventListener('keydown',e=>{if(!TOUR)return;if(e.key==='Escape'){e.stopPropagation();endTour()}else if(TOUR.busy)return;
+  else if(e.key==='ArrowRight'&&!TOUR.steps[TOUR.i].act&&!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)){TOUR.dir=1;TOUR.i>=TOUR.steps.length-1?endTour():showStep(TOUR.i+1)}
+  else if(e.key==='ArrowLeft'&&!TOUR.steps[TOUR.i].act&&!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)){TOUR.dir=-1;showStep(TOUR.i-1)}},true);
 function maybeTour(){try{if(localStorage.getItem(tourKey()))return}catch(e){return}if(TOUR||M.open)return;setTimeout(()=>{if(!TOUR&&!M.open)startTour()},700)}
 ACT_LATE.push(()=>{ACT['tour']=()=>{if(M.open)M.close();startTour()}});
 ACT_LATE.forEach(f=>f());
