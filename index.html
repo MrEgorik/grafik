@@ -269,6 +269,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .bell{position:relative;border:1px solid var(--line);background:var(--surface);width:34px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--ink)}
 .bell .badge{position:absolute;top:-6px;right:-7px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#FFFFFF;font-size:11px;font-weight:700;display:grid;place-items:center;line-height:1}
 .cand.bwarn{border-left:3px solid var(--warn)}
+.newp{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:8px;padding:10px}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -847,7 +848,7 @@ function viewBoard(){
     <div class="list">${S.cfg.assistants.slice().sort(byName).map(a=>{
       const av=S.avail[a.id]||{};const days=range(UI.from,UI.to).filter(d=>av[d]).length;
       return`<button class="ra" data-act="avail" data-a="${a.id}"><span class="nm">${esc(a.name)}</span><span class="meta num">${days?`${days} дн. может`:'<span class="z">даты не отмечены</span>'}<br>${load[a.id]||0} смен назначено${st.rates&&cost[a.id]?' · '+rub(cost[a.id]):''}</span></button>`}).join('')||`<div class="foot">Ассистентов пока нет — добавьте их в разделе «Ассистенты».</div>`}</div>
-    <div class="foot">Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
+    <div class="foot"><button class="btn sm" data-act="rail-add">+ Добавить ассистента</button><br><br>Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
   return`${isAdmin()?exampleBanner()+schedHead():'<div><h1>Общий график</h1><p class="sub">Только просмотр. Ваши смены выделены.</p></div>'}
   <div class="toolbar">
     <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
@@ -942,6 +943,7 @@ function newTag(name){name=name.trim();if(!name)return null;let t=S.cfg.tags.fin
 
 /* ---------- modals: entries ---------- */
 function openPicker(date,eid){
+  NP={open:false,on:a=>{const f=findEntry(date,eid);if(!f)return;f.en.assistantId=a.id;MISS.delete(f.en.id);markMonth(ymOf(date));M.close();toast(a.name+' добавлен(а) и поставлен(а) в смену')}};
   M.show(()=>{
     const f=findEntry(date,eid);if(!f)return{title:'Смена удалена',body:''};
     const{en,cl}=f;const load=loadMap();
@@ -955,7 +957,7 @@ function openPicker(date,eid){
           <span class="r num">${c.av?SH[c.av].l:''}<br>${c.load} смен${SET().rates&&num(c.a.rate)!=null?' · '+rub(shiftCost(c.a,en.shift)):''}</span></button>`}).join('')||'<div class="list-empty">—</div>'}</div>`}).join('');
     const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
     return{title:`<h2>${esc(docName(en.doctorId))}</h2><p class="sub">${esc(cl.name)} · ${fmtL(date)} · ${SH[en.shift].l}${tg.length?' · нужно: '+tg.map(t=>esc(t.name)).join(', '):''}</p>`,
-      body,foot:en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать ассистента</button>`:''};
+      body:body+newPersonHTML('as',!S.cfg.assistants.length),foot:en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать ассистента</button>`:''};
   });
 }
 function openEntryEdit(date,eid,newAt){
@@ -965,10 +967,12 @@ function openEntryEdit(date,eid,newAt){
   else{const f=findEntry(date,eid);if(!f)return;draft=clone(f.en)}
   const ctx=newAt?{cl:clById(newAt.cid),ch:newAt.ch}:(()=>{const f=findEntry(date,eid);return{cl:f.cl,ch:f.ch}})();
   TG={ent:{get:()=>draft.tags,set:a=>draft.tags=a}};
+  NP={open:false,on:d=>{draft.doctorId=d.id;draft.tags=[...new Set([...draft.tags,...d.tags])]}};
   M.show(()=>{
     const ds=S.cfg.doctors.slice().sort(byName);
     return{title:`<h2>${newAt?'Новая смена врача':'Смена врача'}</h2><p class="sub">${esc(ctx.cl.name)} · кресло ${ctx.ch+1} · ${fmtL(date)}</p>`,
     body:`<label class="f">Врач<select id="edDoc"><option value="">— выберите —</option>${ds.map(d=>`<option value="${d.id}" ${d.id===draft.doctorId?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
+      ${newPersonHTML('doc',!ds.length)}
       <div class="f" style="font-size:12px;color:var(--muted);font-weight:600;display:flex;flex-direction:column;gap:5px">Режим<div class="seg">${Object.keys(SH).map(k=>`<button type="button" data-act="ed-sh" data-v="${k}" aria-pressed="${draft.shift===k}">${SH[k].l}</button>`).join('')}</div></div>
       <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Задачи на этот день</h3><p class="sub" style="margin:0 0 8px">Подставлены навыки врача. Добавьте, например, «Имплантация», если она запланирована именно сегодня — ассистент подберётся под неё.</p>${tagPicker(draft.tags,'ent')}</div>`,
     foot:`${newAt?'':`<button class="btn danger" data-act="ed-del" id="eddel">Удалить смену</button><span class="spacer"></span>`}<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="ed-save">Сохранить</button>`,
@@ -992,14 +996,25 @@ function openEntryEdit(date,eid,newAt){
 }
 
 /* ---------- modals: template cell ---------- */
+/* быстрое создание врача / ассистента прямо из окна */
+let NP={open:false,on:null};
+function newPersonHTML(kind,forceOpen){
+  const lbl=kind==='doc'?'врач':'ассистент';
+  if(!(NP.open||forceOpen))return`<div><button type="button" class="btn sm ghost" data-act="np-open">+ Новый ${lbl}</button></div>`;
+  return`<div class="newp"><span class="sub">${forceOpen&&!NP.open?(kind==='doc'?'Врачей пока нет — добавьте первого:':'Ассистентов пока нет — добавьте первого:'):'Новый '+lbl+':'}</span>
+    <div class="row" style="gap:6px"><input type="text" id="npName" placeholder="Фамилия И.О." autocomplete="off" style="flex:1;min-width:170px"><button type="button" class="btn sm primary" data-act="np-add" data-k="${kind}">Добавить</button>${forceOpen&&!NP.open?'':'<button type="button" class="btn sm ghost" data-act="np-cancel">Отмена</button>'}</div>
+    <span class="sub">Навыки и остальное можно заполнить потом в карточке.</span></div>`;
+}
 function openTpl(ch,w){
   const cl=clById(UI.clinic);let arr=clone(cl.template[ch+'-'+w]||[]);
+  if(!arr.length)arr.push({doctorId:'',shift:'day'});
+  NP={open:false,on:d=>{const e=arr.find(x=>!x.doctorId);if(e)e.doctorId=d.id;else if(arr.length<2&&!arr.some(x=>x.shift==='day')){const u=arr[0]?.shift;arr.push({doctorId:d.id,shift:u==='am'?'pm':u==='pm'?'am':'day'})}}};
   M.show(()=>{const ds=S.cfg.doctors.slice().sort(byName);
     return{title:`<h2>${esc(cl.name)} · кресло ${ch+1}</h2><p class="sub">${['Каждый понедельник','Каждый вторник','Каждую среду','Каждый четверг','Каждую пятницу','Каждую субботу','Каждое воскресенье'][w]}</p>`,
     body:(arr.map((e,i)=>`<div class="row" style="align-items:flex-end"><label class="f" style="flex:1;min-width:180px">Врач<select data-i="${i}" class="tdoc"><option value="">— выберите —</option>${ds.map(d=>`<option value="${d.id}" ${d.id===e.doctorId?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
       <div class="seg">${Object.keys(SH).map(k=>`<button type="button" data-act="t-sh" data-i="${i}" data-v="${k}" aria-pressed="${e.shift===k}">${SH[k].l}</button>`).join('')}</div>
       <button class="btn sm ghost" data-act="t-rm" data-i="${i}">Убрать</button></div>`).join('')||'<p class="sub">Врача на этот день нет.</p>')+
-      (ds.length?'':'<p class="sub">Сначала добавьте врачей в разделе «Врачи».</p>')+
+      newPersonHTML('doc',!ds.length)+
       (arr.length<2&&!arr.some(e=>e.shift==='day')?`<div><button class="btn sm" data-act="t-add">+ ${arr.length?'второй врач (утро/вечер)':'поставить врача'}</button></div>`:''),
     foot:`<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="t-save">Сохранить</button>`,
     bind:r=>r.querySelectorAll('.tdoc').forEach(s=>s.onchange=e=>{arr[+s.dataset.i].doctorId=e.target.value})};
@@ -1454,6 +1469,7 @@ document.addEventListener('change',e=>{
   if(e.target.id==='pTo'&&e.target.value){UI.to=e.target.value<UI.from?UI.from:e.target.value;MISS.clear();saveUI();render()}
 });
 document.addEventListener('input',e=>{if(e.target.id==='clName'){const c=clById(UI.clinic);if(c){c.name=e.target.value;markCfg();const b=document.querySelector(`[data-act=clinic-sel][data-v="${c.id}"]`);if(b)b.textContent=c.name}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='npName'){e.preventDefault();const b=document.querySelector('[data-act=np-add]');if(b)b.click();return}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id&&e.target.id.startsWith('newTag-')){e.preventDefault();ACT['tg-new']({dataset:{k:e.target.id.slice(7)}})}});
 document.addEventListener('submit',e=>{e.preventDefault();
   if(e.target.id==='loginForm'){doLogin();return}
@@ -1521,6 +1537,13 @@ ACT['av-day']=b=>{const ds=b.dataset.v;if(!avEditable(ds))return;const cur=(S.av
 ACT['av-wd']=b=>{const w=+b.dataset.v;avMonthDays().filter(d=>wdOf(d)===w&&avEditable(d)).forEach(d=>avSet(d,AV.brush));markAvail(AV.aid);AV.refresh()};
 ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);AV.refresh()};
 ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;avMonthDays().filter(avEditable).forEach(d=>avSet(d,'none'));markAvail(AV.aid);AV.refresh()};
+ACT['np-open']=()=>{NP.open=true;M.refresh();setTimeout(()=>$('#npName')?.focus(),20)};
+ACT['np-cancel']=()=>{NP.open=false;M.refresh()};
+ACT['np-add']=b=>{const i=$('#npName');const name=i?i.value.trim():'';if(!name){i&&i.focus();toast('Впишите фамилию и инициалы');return}
+  let p;if(b.dataset.k==='doc'){p={id:uid(),name,tags:[],prio:[],block:[]};S.cfg.doctors.push(p)}else{p={id:uid(),name,tags:[]};S.cfg.assistants.push(p)}
+  markCfg();NP.open=false;const on=NP.on;if(on)on(p);if(M.open)M.refresh();render();toast((b.dataset.k==='doc'?'Врач ':'Ассистент ')+name+' добавлен')};
+ACT['rail-add']=()=>{NP={open:true,on:a=>{M.close();openAvail(a.id)}};
+  M.show(()=>({title:'<h2>Новый ассистент</h2><p class="sub">После добавления откроется календарь — отметьте, когда он может работать.</p>',body:newPersonHTML('as',true),foot:'<button class="btn" data-act="close">Отмена</button>'}));setTimeout(()=>$('#npName')?.focus(),20)};
 ACT['rtab']=b=>{UI.rtab=b.dataset.v;saveUI();render();window.scrollTo(0,0)};
 ACT_LATE.forEach(f=>f());
 render();
