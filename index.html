@@ -592,14 +592,17 @@ async function loadPeople(){if(!SB||!isAdmin()||LEGACY)return;
   const[a,b]=await Promise.all([SB.from('invites').select('*').eq('org_id',ORG).order('created_at',{ascending:false}),SB.from('members').select('*')]);
   if(!a.error)INVITES=a.data;if(!b.error)MEMBERS=b.data.filter(u=>u.org_id===ORG||(isOwner()&&!u.org_id));updateBell()}
 function linkedCards(role){const s=new Set();MEMBERS.forEach(u=>{if(u.role===role&&u.card_id)s.add(u.card_id)});INVITES.forEach(i=>{if(i.role===role&&!i.used_by&&new Date(i.expires_at)>new Date()&&i.card_id)s.add(i.card_id)});return s}
-function openInvite(role,card){
+function openInvite(role,card,orgId){
   if(LEGACY){toast('Сначала выполните SQL для организаций');return}
-  let st={role,card,link:'',busy:false,err:''};
+  const oid=orgId||ORG,other=oid!==ORG;
+  let st={role:other?'admin':role,card,link:'',busy:false,err:''};
+  let list=other?[]:INVITES;
+  if(other)SB.from('invites').select('*').eq('org_id',oid).order('created_at',{ascending:false}).then(r=>{if(!r.error){list=r.data;if(M.open)M.refresh()}});
   M.show(()=>{
     const cards=st.role==='assistant'?S.cfg.assistants:st.role==='doctor'?S.cfg.doctors:null;const used=linkedCards(st.role);
-    const roles=[['assistant','Ассистент'],['doctor','Врач'],['admin','Ответственный за расписание']];
-    const active=INVITES.filter(i=>!i.used_by&&new Date(i.expires_at)>new Date());
-    return{title:`<h2>Пригласить в программу</h2><p class="sub">${esc(orgName(ORG))}. Ссылка одноразовая и действует 14 дней. Человек зарегистрируется по ней и сразу получит доступ.</p>`,
+    const roles=other?[['admin','Ответственный за расписание']]:[['assistant','Ассистент'],['doctor','Врач'],['admin','Ответственный за расписание']];
+    const active=list.filter(i=>!i.used_by&&new Date(i.expires_at)>new Date());
+    return{title:`<h2>${st.role==='admin'&&other?'Пригласить ответственного':'Пригласить в программу'}</h2><p class="sub">${esc(orgName(oid))}. Ссылка одноразовая и действует 14 дней. Человек зарегистрируется по ней и сразу получит доступ${st.role==='admin'?' как ответственный за расписание этой организации':''}.</p>`,
     body:st.link?`<div class="note info" style="flex-direction:column;align-items:stretch">
         <b>Ссылка готова${st.card?' · '+esc(st.role==='assistant'?asById(st.card)?.name:docById(st.card)?.name):''}</b><span class="sub">Отправьте её этому человеку в мессенджер. Она сработает один раз.</span>
         <input type="text" id="invLink" value="${esc(st.link)}" readonly onclick="this.select()">
@@ -620,15 +623,16 @@ function openInvite(role,card){
     if(st.role!=='admin'&&!st.card){st.err='Выберите, чья это карточка';M.refresh();return}
     st.busy=true;st.err='';M.refresh();
     const card_name=st.role==='assistant'?asById(st.card)?.name:st.role==='doctor'?docById(st.card)?.name:'';
-    const row={token:genToken(),org_id:ORG,role:st.role,card_id:st.card||null,card_name:card_name||null};
+    const row={token:genToken(),org_id:oid,role:st.role,card_id:st.card||null,card_name:card_name||null};
     const r=await SB.from('invites').insert(row);st.busy=false;
     if(r.error){st.err=/invites/.test(r.error.message)?'Сначала выполните SQL для приглашений':'Не удалось создать: '+r.error.message;M.refresh();return}
-    INVITES.unshift(Object.assign({created_at:new Date().toISOString(),expires_at:new Date(Date.now()+14*864e5).toISOString()},row));st.link=inviteLink(row.token);M.refresh();copy(st.link)};
+    const full=Object.assign({created_at:new Date().toISOString(),expires_at:new Date(Date.now()+14*864e5).toISOString()},row);
+    if(other)list.unshift(full);else INVITES.unshift(full);st.link=inviteLink(row.token);M.refresh();copy(st.link)};
   ACT['inv-copy']=()=>copy(st.link);
   ACT['inv-share']=async()=>{try{await navigator.share({title:'Приглашение в График ассистентов',text:'Регистрация в программе «График ассистентов»',url:st.link})}catch(e){}};
   ACT['inv-more']=()=>{st={role:st.role,card:'',link:'',busy:false,err:''};M.refresh()};
   ACT['inv-copyold']=b=>copy(inviteLink(b.dataset.v));
-  ACT['inv-del']=async b=>{if(!armed(b,'Точно?'))return;const r=await SB.from('invites').delete().eq('token',b.dataset.v);if(r.error)toast('Не удалось отменить');else{INVITES=INVITES.filter(i=>i.token!==b.dataset.v);M.refresh();toast('Ссылка отменена')}};
+  ACT['inv-del']=async b=>{if(!armed(b,'Точно?'))return;const r=await SB.from('invites').delete().eq('token',b.dataset.v);if(r.error)toast('Не удалось отменить');else{INVITES=INVITES.filter(i=>i.token!==b.dataset.v);list=list.filter(i=>i.token!==b.dataset.v);M.refresh();toast('Ссылка отменена')}};
 }
 
 /* управление пользователями (для администратора) */
@@ -653,7 +657,7 @@ function openUsers(){
     else{const G=[['Ожидают доступа',u=>u.role==='pending'],['С доступом',u=>['owner','admin','assistant','doctor'].includes(u.role)],['Доступ закрыт',u=>u.role==='blocked']];
       body=G.map(([t,f],i)=>{const arr=list.filter(f);if(!arr.length&&i)return'';return`<div class="grp"><h3>${t}<span class="n num">${arr.length}</span></h3>${arr.map(row).join('')||'<div class="list-empty">Новых заявок нет</div>'}</div>`}).join('')}
     const code=(ORGS.find(o=>o.id===ORG)||{}).code||'';
-    return{title:`<h2>Пользователи · ${esc(orgName(ORG))}</h2><p class="sub">Сотрудники регистрируются сами на экране входа с кодом клиники${code?` <b class="num" style="color:var(--ink);letter-spacing:.08em">${esc(code)}</b>`:''}. Выберите роль и, для ассистента или врача, его карточку.</p>`,
+    return{title:`<h2>Пользователи · ${esc(orgName(ORG))}</h2><p class="sub">Новых сотрудников приглашайте ссылкой — кнопка «Пригласить» внизу. Здесь можно поменять роль или закрыть доступ.</p>`,
       body,foot:'<button class="btn" data-act="u-reload">Обновить</button><button class="btn" data-act="invite">Пригласить</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>',
       bind:r=>{r.querySelectorAll('.urole').forEach(x=>x.onchange=()=>{const d=draft[x.dataset.u];d.role=x.value;if(!['assistant','doctor'].includes(d.role))d.card='';else if(d.card&&!(d.role==='assistant'?asById(d.card):docById(d.card)))d.card='';M.refresh()});
         r.querySelectorAll('.ucard').forEach(x=>x.onchange=()=>{draft[x.dataset.u].card=x.value;M.refresh()})}};
@@ -674,19 +678,20 @@ async function switchOrg(id){if(!isOwner()||id===ORG)return;
 const genCode=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';const r=crypto.getRandomValues(new Uint8Array(6));r.forEach(x=>c+=A[x%A.length]);return c};
 function openOrgs(){
   let busy=false;
-  M.show(()=>({title:'<h2>Организации</h2><p class="sub">Каждая организация видит только свои графики, врачей и ассистентов. Код нужен сотрудникам для регистрации.</p>',
+  M.show(()=>({title:'<h2>Организации</h2><p class="sub">Каждая организация видит только свои графики, врачей и ассистентов.</p>',
     body:`${ORGS.map(o=>`<div class="urow"><div class="row" style="gap:8px"><input type="text" class="orgn" data-v="${o.id}" value="${esc(o.name)}" style="flex:1;min-width:160px" aria-label="Название">
-      <span class="sub">код</span><b class="num" style="letter-spacing:.08em">${esc(o.code)}</b><button class="btn sm" data-act="org-copy" data-v="${esc(o.code)}">Копировать</button>
+      <button class="btn sm" data-act="org-inv" data-v="${o.id}">Пригласить ответственного</button>
       ${o.id===ORG?'<span class="sub">открыта</span>':`<button class="btn sm" data-act="org-open" data-v="${o.id}">Открыть</button>`}</div></div>`).join('')||'<p class="sub">Пока ни одной.</p>'}
       <form id="orgNew" class="row" style="gap:6px"><input type="text" id="orgNewName" placeholder="Название новой организации" style="flex:1;min-width:180px"><button class="btn primary ${busy?'busy':''}">Создать</button></form>
-      <p class="sub" style="margin:0">Чтобы назначить ответственного: откройте организацию, дайте ему её код, а когда он зарегистрируется — в «Пользователях» выберите роль «Ответственный».</p>`,
+      <p class="sub" style="margin:0">Ответственный получает ссылку, регистрируется по ней и сразу может составлять график своей организации и приглашать сотрудников.</p>`,
     foot:'<button class="btn primary" data-act="close">Готово</button>',
     bind:r=>{r.querySelectorAll('.orgn').forEach(i=>i.onchange=async()=>{const n=i.value.trim();if(!n)return;const x=await SB.from('orgs').update({name:n}).eq('id',i.dataset.v);
       if(x.error)toast('Не удалось переименовать');else{const o=ORGS.find(o=>o.id===i.dataset.v);if(o)o.name=n;render();toast('Название сохранено')}});
       r.querySelector('#orgNew').onsubmit=async e=>{e.preventDefault();e.stopPropagation();const n=r.querySelector('#orgNewName').value.trim();if(!n||busy)return;busy=true;M.refresh();
         const o={id:'o'+uid().slice(0,8),name:n,code:genCode()};const x=await SB.from('orgs').insert(o);busy=false;
-        if(x.error){toast('Не удалось создать: '+x.error.message);M.refresh();return}ORGS.push(o);M.refresh();render();toast('Организация создана, код '+o.code)}}}),true);
+        if(x.error){toast('Не удалось создать: '+x.error.message);M.refresh();return}ORGS.push(o);render();M.close();openInvite('admin','',o.id);toast('Организация создана — отправьте ссылку ответственному')}}}),true);
   ACT['org-open']=b=>switchOrg(b.dataset.v);
+  ACT['org-inv']=b=>{M.close();openInvite('admin','',b.dataset.v)};
   ACT['org-copy']=async b=>{try{await navigator.clipboard.writeText(b.dataset.v);toast('Код скопирован')}catch(e){toast('Код: '+b.dataset.v)}};
 }
 async function initStore(){
