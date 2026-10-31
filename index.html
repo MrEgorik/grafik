@@ -277,6 +277,16 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 .lg{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid var(--line);vertical-align:-2px}
 .lg.coll{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--warn) 55%,transparent)}
 .lg.lock{background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--muted) 30%,transparent) 3px 5px)}
+.sd{margin-top:5px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:5px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.sd.ok,.amap td.ok{background:var(--ok-soft);color:var(--ok)} .sd.tight,.amap td.tight{background:var(--warn-soft);color:var(--warn)} .sd.bad,.amap td.bad{background:var(--bad-soft);color:var(--bad)}
+.amap td{text-align:center;padding:6px 4px;min-width:46px;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px}
+.amap .sumr td{font-size:12px} .amap .sumr th,.amap .sumr td{position:static}
+.amap td.ac.v-day{background:var(--day-soft);color:var(--day)} .amap td.ac.v-am{background:var(--am-soft);color:var(--am)} .amap td.ac.v-pm{background:var(--pm-soft);color:var(--pm)}
+.amap th.lab{display:table-cell;text-align:left;min-width:150px}
+.amap .aname{border:0;background:none;padding:0;font-weight:600;color:var(--ink);text-align:left;display:block}
+.amap .aname:hover{color:var(--accent)}
+.lg.ok2{background:var(--ok-soft)} .lg.tight2{background:var(--warn-soft)} .lg.bad2{background:var(--bad-soft)}
+.seg{flex-wrap:wrap}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -303,7 +313,7 @@ table.board{border-collapse:separate;border-spacing:0;font-size:13px}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:00'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 23:05'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -803,7 +813,7 @@ function renderMain(){
   if(!isAdmin()){$('#main').innerHTML=viewRole();return}
   $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
   const m=$('#main');
-  if(UI.tab==='sched'){if(UI.mode==='pub'&&!SUPA_ON)UI.mode='board';m.innerHTML=UI.mode==='week'?viewWeek():viewBoard()}
+  if(UI.tab==='sched'){if(UI.mode==='pub'&&!SUPA_ON)UI.mode='board';m.innerHTML=UI.mode==='week'?viewWeek():UI.mode==='amap'?viewAvailMap():viewBoard()}
   else if(UI.tab==='doctors')m.innerHTML=viewDoctors();
   else m.innerHTML=viewAssistants();
 }
@@ -814,7 +824,7 @@ function exampleBanner(){
 }
 function schedHead(){
   return`<div class="row"><div><h1>Расписание</h1></div><span class="spacer"></span>
-  <div class="seg" role="group">${SUPA_ON?`<button data-act="mode" data-v="pub" aria-pressed="${UI.mode==='pub'}">Опубликованное</button>`:''}<button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">${SUPA_ON?'Редактирование'+(unpubCount()?' •':''):'График'}</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
+  <div class="seg" role="group">${SUPA_ON?`<button data-act="mode" data-v="pub" aria-pressed="${UI.mode==='pub'}">Опубликованное</button>`:''}<button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">${SUPA_ON?'Редактирование'+(unpubCount()?' •':''):'График'}</button><button data-act="mode" data-v="amap" aria-pressed="${UI.mode==='amap'}">Доступность</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
 }
 function cellHTML(d,cl,ch){
   if(!editing())return cellRO(d,cl,ch);
@@ -837,9 +847,20 @@ function cellRO(d,cl,ch){
     return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(docName(en.doctorId))}</span></div><div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(a.name):'—'}</div></div>`}).join('');
 }
 // даты по горизонтали: строки = кресла, столбцы = дни
+/* сколько ассистентов могут и сколько нужно на дату */
+function supplyDemand(d){
+  let am=0,pm=0,any=0;S.cfg.assistants.forEach(a=>{const v=(S.avail[a.id]||{})[d];if(!v)return;any++;if(v==='day'||v==='am')am++;if(v==='day'||v==='pm')pm++});
+  let nAm=0,nPm=0,need=0;withSrc(false,()=>forEntries(d,en=>{need++;if(en.shift!=='pm')nAm++;if(en.shift!=='am')nPm++}));
+  return{am,pm,any,nAm,nPm,need};
+}
+function lvl(have,need){if(!need)return'';if(have<need)return'bad';if(have-need<Math.max(1,Math.ceil(need*.25)))return'tight';return'ok'}
+function sdLevel(x){const l=[lvl(x.am,x.nAm),lvl(x.pm,x.nPm)];return l.includes('bad')?'bad':l.includes('tight')?'tight':l.includes('ok')?'ok':''}
+function sdBadge(d){if(!editing()||!S.cfg.assistants.length)return'';const x=supplyDemand(d);if(!x.need&&!x.any)return'';
+  const t=`Утро: могут ${x.am}, нужно ${x.nAm}. Вечер: могут ${x.pm}, нужно ${x.nPm}.`;
+  return`<div class="sd ${sdLevel(x)}" title="${t}">могут ${x.any} · нужно ${x.need}</div>`}
 function boardH(dates,cls){
   let h=`<table class="board"><thead><tr><th class="lab">Кресло</th>`;
-  dates.forEach(d=>{const w=wdOf(d);h+=`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`});
+  dates.forEach(d=>{const w=wdOf(d);h+=`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div>${sdBadge(d)}</th>`});
   h+=`</tr></thead><tbody>`;
   cls.forEach(cl=>{
     h+=`<tr class="cl"><td colspan="${dates.length+1}"><span style="position:sticky;left:10px">${esc(cl.name)}</span></td></tr>`;
@@ -859,7 +880,7 @@ function boardV(dates,cls){
   cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<th class="chh ${ch===0?'first':''}">Кресло ${ch+1}</th>`});
   h+=`</tr></thead><tbody>`;
   dates.forEach(d=>{const w=wdOf(d);
-    h+=`<tr class="${w>4?'we':''} ${d===TODAY?'today':''}"><th class="lab dl"><div class="d num">${fmt(d)}</div><div class="${w>4?'wer':'sub'}">${WD[w]}</div></th>`;
+    h+=`<tr class="${w>4?'we':''} ${d===TODAY?'today':''}"><th class="lab dl"><div class="d num">${fmt(d)}</div><div class="${w>4?'wer':'sub'}">${WD[w]}</div>${sdBadge(d)}</th>`;
     cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<td class="c ${w>4?'we':''} ${ch===0?'first':''}">${cellHTML(d,cl,ch)}</td>`});
     h+=`</tr>`;
   });
@@ -900,6 +921,24 @@ function viewBoard(){
   ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
     <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
   <div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap">${board}</div>${editing()?rail:''}</div>`;
+}
+function viewAvailMap(){
+  const dates=range(UI.from,UI.to);const as=S.cfg.assistants.slice().sort(byName);
+  const sd=dates.map(supplyDemand);
+  let h=`<table class="board amap"><thead><tr><th class="lab">Ассистент</th>${dates.map(d=>{const w=wdOf(d);return`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`}).join('')}</tr>
+    <tr class="sumr"><th class="lab">Утро<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.am,x.nAm)}">${x.am}${x.nAm?' / '+x.nAm:''}</td>`).join('')}</tr>
+    <tr class="sumr"><th class="lab">Вечер<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.pm,x.nPm)}">${x.pm}${x.nPm?' / '+x.nPm:''}</td>`).join('')}</tr></thead><tbody>`;
+  as.forEach(a=>{const av=S.avail[a.id]||{};const n=dates.filter(d=>av[d]).length;
+    h+=`<tr><th class="lab"><button class="aname" data-act="avail" data-a="${a.id}">${esc(a.name)}</button><span class="sub num">${n?n+' дн.':'не отмечено'}</span></th>${dates.map(d=>{const v=av[d];return`<td class="ac ${v?'v-'+v:''}">${v?SH[v].s:''}</td>`}).join('')}</tr>`});
+  h+=`</tbody></table>`;
+  return`${schedHead()}
+  <div class="toolbar"><div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
+    <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
+    <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div><span class="spacer"></span>
+    ${SUPA_ON?'<button class="btn" data-act="collect">Сбор дат</button>':''}<button class="btn" data-act="rail-add">+ Ассистент</button></div>
+  <div class="legend"><span><i class="lg ok2"></i> хватает с запасом</span><span><i class="lg tight2"></i> впритык</span><span><i class="lg bad2"></i> не хватает</span><span>${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span><span>«нужно» — смены врачей в черновике графика</span></div>
+  ${as.length?`<div class="boardwrap">${h}</div>`:'<div class="boardwrap"><div class="empty-board"><h2>Ассистентов пока нет</h2><button class="btn primary" data-act="rail-add">Добавить ассистента</button></div></div>'}
+  <p class="sub" style="margin:0">Нажмите на имя ассистента, чтобы изменить его даты.</p>`;
 }
 function viewWeek(){
   const cls=S.cfg.clinics;
