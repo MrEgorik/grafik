@@ -319,6 +319,7 @@ body.has-box .top{position:static}
 /* просторная сетка */
 .board.dens-l td.c{width:214px;min-width:214px;padding:7px}
 .board.amap.dens-l td{min-width:60px;padding:9px 6px}
+.as.empty.offer{border-style:solid;border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:600}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -345,7 +346,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:42'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 23:45'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -371,7 +372,7 @@ const shChip=s=>`<span class="sh ${s}" title="${SH[s]?.l||''}">${SH[s]?.s||'?'}<
 const TODAY=iso(new Date());
 
 /* ---------- state ---------- */
-const S={cfg:{tags:[],doctors:[],assistants:[],clinics:[]},avail:{},months:{},pub:{}};
+const S={cfg:{tags:[],doctors:[],assistants:[],clinics:[]},avail:{},months:{},pub:{},offers:{}};
 // опубликованное расписание (видят сотрудники) — только в версии с базой
 let FORCE_SRC=null;
 const usePub=()=>FORCE_SRC!==null?FORCE_SRC:(SUPA_ON&&(!isAdmin()||UI.mode==='pub'));
@@ -407,7 +408,7 @@ const Store={
     if(path==='cfg/main')return this.mode==='supa'?splitCfg().pub:clone(S.cfg);
     if(path==='cfg/private')return splitCfg().priv;
     const[col,id]=path.split('/');
-    if(col==='avail')return S.avail[id]?{dates:clone(S.avail[id])}:null;
+    if(col==='avail'){const o=S.offers[id]&&Object.keys(S.offers[id]).length?S.offers[id]:null;return S.avail[id]||o?Object.assign({dates:clone(S.avail[id]||{})},o?{offers:clone(o)}:{}):null}
     if(col==='months')return S.months[id]&&Object.keys(S.months[id]).length?{days:clone(S.months[id])}:null;
     if(col==='pub')return S.pub[id]&&Object.keys(S.pub[id]).length?{days:clone(S.pub[id])}:null;
   },
@@ -464,7 +465,7 @@ function normalize(){
   c.doctors.forEach(d=>{d.tags=d.tags||[];d.prio=d.prio||[];d.block=d.block||[]});
   c.assistants.forEach(a=>{a.tags=a.tags||[]});
   c.clinics.forEach(k=>{k.chairs=Math.max(1,k.chairs|0||1);k.template=k.template||{}});
-  if(!Array.isArray(c.collect))c.collect=[];
+  if(!Array.isArray(c.collect))c.collect=[];if(!Array.isArray(c.calls))c.calls=[];
   c.settings=Object.assign({rates:false,cheap:false,showTags:true,useTimes:true},c.settings||{});c.settings.times=Object.assign({am:'9-14',pm:'15-21',day:'9-21'},c.settings.times||{});
 }
 const SET=()=>S.cfg.settings||{rates:false,cheap:false,showTags:true};
@@ -479,10 +480,10 @@ const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/
 function applyDoc(path,data){const[col,id]=path.split('/');
   if(col==='cfg'&&id==='main'){S.cfg=clone(data);mergePriv();normalize()}
   else if(col==='cfg'&&id==='private'){PRIV=clone(data||{});PRIV.doctors=PRIV.doctors||{};PRIV.assistants=PRIV.assistants||{};mergePriv();normalize()}
-  else if(col==='avail')S.avail[id]=clone(data.dates||{});
+  else if(col==='avail'){S.avail[id]=clone(data.dates||{});S.offers[id]=clone(data.offers||{})}
   else if(col==='months')S.months[id]=clone(data.days||{});
   else if(col==='pub')S.pub[id]=clone(data.days||{})}
-function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id];else if(col==='pub')delete S.pub[id]}
+function removeDoc(path){const[col,id]=path.split('/');if(col==='avail'){delete S.avail[id];delete S.offers[id]}else if(col==='months')delete S.months[id];else if(col==='pub')delete S.pub[id]}
 async function initSupa(){
   Store.mode='supa';setStore('','Подключение…');
   const tmo=(p,ms)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),ms))]);
@@ -523,7 +524,7 @@ async function loadOrgData(){
   const{data:raw,error}=LEGACY?await SB.from('docs').select('path,data'):await SB.from('docs').select('path,data').like('path',pre+'%');
   const data=(raw||[]).filter(r=>LEGACY?!r.path.includes(':'):true).map(r=>({path:r.path.slice(pre.length),data:r.data}));
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
-  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};PRIV={doctors:{},assistants:{}};
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};S.offers={};PRIV={doctors:{},assistants:{}};
   const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
   data.forEach(r=>{if(r.path!=='cfg/main')applyDoc(r.path,r.data)});normalize();
   AUTHED=true;LOGIN_ERR='';
@@ -629,9 +630,12 @@ function bellItems(){
     INVITES.filter(i=>i.used_by&&!seen.includes(i.token)&&(Date.now()-new Date(i.used_at))<14*864e5).forEach(i=>{const u=MEMBERS.find(m=>m.user_id===i.used_by);
       it.push({k:'inv:'+i.token,t:`${i.card_name||u&&u.name||'Новый сотрудник'}: регистрация по приглашению`,s:`${ROLE_L[i.role]}${u?' · логин '+u.login:''} · ${fmt(iso(new Date(i.used_at)))}`})});
     conflicts().forEach(c=>it.push({k:'cf',t:`${fmt(c.d)} · ${c.cl.name}, ${docName(c.en.doctorId)}`,s:`${asById(c.en.assistantId)?.name}: ${c.w}`,go:'date:'+c.d,stay:true,warn:true}));
+    const seenOf=getSeen('offers')||[];const newOf=[];callItems().forEach(it=>offersFor(it.eid).forEach(a=>{if(!seenOf.includes(a.id+':'+it.eid))newOf.push({a,it})}));
+    if(newOf.length)it.push({k:'of',t:`Отклики на клич: ${newOf.length}`,s:newOf.slice(0,4).map(x=>`${x.a.name} — ${fmt(x.it.d)}, ${x.it.doc}`).join('; ')+(newOf.length>4?'…':''),go:'calls'});
     activeColl().filter(c=>daysLeft(c.deadline)<=3).forEach(c=>{const miss=S.cfg.assistants.filter(a=>!range(c.from,c.to).some(d=>(S.avail[a.id]||{})[d]));
       if(miss.length)it.push({k:'cl',t:`Сбор дат на ${fmt(c.from)}–${fmt(c.to)}: ${leftText(c)}`,s:'Не отметились: '+miss.map(a=>a.name).join(', '),go:'collect',stay:true,warn:true})});
   }else if(['assistant','doctor'].includes(ROLE())&&myCard()){
+    if(ROLE()==='assistant'){const n=callItems().filter(i=>!(S.offers[myCard()]||{})[i.eid]).length;if(n)it.push({k:'call',t:`Нужны ассистенты: ${n} свободных смен`,s:'Откройте «Свободные смены» и откликнитесь, если можете выйти.',go:'calls',stay:true})}
     if(ROLE()==='assistant')activeColl().filter(c=>c.to>=TODAY).forEach(c=>it.push({k:'cl',t:`Отметьте даты на ${fmt(c.from)}–${fmt(c.to)} до ${fmt(c.deadline)}`,s:leftText(c)+'. Потом даты закрепятся.',go:'avail',stay:true,warn:daysLeft(c.deadline)<=2}));
     const cur=shiftSig();let seen=getSeen('shifts');
     if(!seen){setSeen('shifts',Object.keys(cur));seen=Object.keys(cur)}
@@ -648,7 +652,8 @@ function openBell(){
       body:it.length?it.map((x,i)=>`<button class="cand ${x.warn?'bwarn':''}" data-act="bell-go" data-i="${i}"><span><span class="nm">${esc(x.t)}</span><br><span class="why">${esc(x.s||'')}</span></span></button>`).join(''):'<p class="sub">Новых уведомлений нет.</p>',
       foot:`${it.some(x=>!x.stay)?'<button class="btn" data-act="bell-read">Отметить прочитанными</button>':''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}});
 }
-function markRead(){if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s])}else setSeen('shifts',Object.keys(shiftSig()));updateBell()}
+function markRead(){if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s]);
+    const so=new Set(getSeen('offers')||[]);callItems().forEach(it=>offersFor(it.eid).forEach(a=>so.add(a.id+':'+it.eid)));setSeen('offers',[...so])}else setSeen('shifts',Object.keys(shiftSig()));updateBell()}
 ACT_LATE.push(()=>{
   ACT['bell-read']=()=>{markRead();M.refresh()};
   ACT['bell-go']=b=>{const x=bellItems()[+b.dataset.i];if(!x)return;
@@ -658,7 +663,8 @@ ACT_LATE.push(()=>{
     if(x.go&&x.go.startsWith('date:')){const d=x.go.slice(5);UI.tab='sched';UI.mode='board';if(d<UI.from||d>UI.to){UI.from=d;UI.to=addDays(d,13)}saveUI();render();return}
     if(x.go==='mine'){markRead();UI.rtab='mine';render()}
     if(x.go==='avail'){UI.rtab='avail';const c=activeColl()[0];if(c)AV.month=ymOf(c.from);render()}
-    if(x.go==='collect')openCollect()};
+    if(x.go==='collect')openCollect();
+    if(x.go==='calls'){if(isAdmin()){markRead();openCalls()}else{UI.rtab='calls';render()}}};
 });
 
 /* приглашения */
@@ -751,7 +757,7 @@ function openUsers(){
 async function switchOrg(id){if(!isOwner()||id===ORG)return;
   if(Store.dirty.size){toast('Подождите секунду — сохраняются изменения');render();return}
   ORG=id;UI.org=id;saveUI();if(M.open)M.close();
-  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};PRIV={doctors:{},assistants:{}};normalize();render();await loadOrgData()}
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};S.offers={};PRIV={doctors:{},assistants:{}};normalize();render();await loadOrgData()}
 const genCode=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c='';const r=crypto.getRandomValues(new Uint8Array(6));r.forEach(x=>c+=A[x%A.length]);return c};
 function openOrgs(){
   let busy=false;
@@ -869,7 +875,7 @@ function cellHTML(d,cl,ch){
     h+=`<div class="ent"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="Изменить смену врача">${esc(docName(en.doctorId))}</button></div>`;
     if(tg.length&&st.showTags)h+=`<div class="tags">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`;
     h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
-       :`<button class="as empty ${miss?'miss':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${miss?'Не нашлось ассистента':'+ ассистент'}</button>`;
+       :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${of?`+ ассистент · откликов: ${of}`:miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
     h+=`</div>`;
   });
   const full=arr.some(e=>e.shift==='day')||arr.length>=2;
@@ -955,7 +961,7 @@ function viewBoard(){
       <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>${zoomCtl()}
     <span class="spacer"></span>
     ${editing()?`<button class="btn" data-act="open-gen">Сформировать</button>
-    <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button><button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
+    <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button><button class="btn" data-act="calls">Клич${callItems().length?' ('+callItems().length+')':''}</button><button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
     <button class="btn" data-act="export">Скачать / печать</button>
     <button class="btn ghost" data-act="copy" title="Скопировать таблицу для Excel">Копировать</button>
   </div>
@@ -1066,8 +1072,9 @@ function openPicker(date,eid){
     const f=findEntry(date,eid);if(!f)return{title:'Смена удалена',body:''};
     const{en,cl}=f;const load=loadMap();
     const cs=classify(date,en,busyMap(date,en.id),load);
-    const groups=[['prio','Приоритет',c=>c.group==='prio'],['can','Могут в эту смену',c=>c.group==='can'],['no','Заняты у другого врача',c=>c.sub==='busy'],['no','Отметили другое время',c=>c.sub==='shift'],['no','Не отметили этот день',c=>c.sub==='noday'],['never','Точно не ставить',c=>c.group==='never']];
-    const body=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&gi>1)return'';
+    const off=c=>!!(S.offers[c.a.id]||{})[en.id]&&c.group!=='never';
+    const groups=[['prio','Откликнулись на клич',off],['prio','Приоритет',c=>c.group==='prio'&&!off(c)],['can','Могут в эту смену',c=>c.group==='can'&&!off(c)],['no','Заняты у другого врача',c=>c.sub==='busy'&&!off(c)],['no','Отметили другое время',c=>c.sub==='shift'&&!off(c)],['no','Не отметили этот день',c=>c.sub==='noday'&&!off(c)],['never','Точно не ставить',c=>c.group==='never']];
+    const body=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&(gi===0||gi>2))return'';
       return`<div class="grp ${g}"><h3>${l}<span class="n num">${arr.length}</span></h3>${arr.map(c=>{
         const why=[c.sub==='noday'?'':c.reason.replace(/^занят: /,''),c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
         return`<button class="cand ${en.assistantId===c.a.id?'cur':''}" data-act="assign" data-d="${date}" data-e="${eid}" data-a="${c.a.id}">
@@ -1107,7 +1114,7 @@ function openEntryEdit(date,eid,newAt){
     else{const f=findEntry(date,eid);const arr=cellArr(date,f.cl.id,f.ch,false);
       if(arr.some(e=>e.id!==eid&&overlap(e.shift,draft.shift))){toast('Время пересекается с другим врачом в этом кресле');return}
       Object.assign(f.en,draft)}
-    MISS.delete(draft.id);markMonth(ymOf(date));M.close();
+    MISS.delete(draft.id);markMonth(ymOf(date));pruneCalls();M.close();
   };
   ACT['ed-del']=b=>{if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='Точно удалить?';return}
     const f=findEntry(date,eid);const arr=cellArr(date,f.cl.id,f.ch,false);arr.splice(arr.findIndex(e=>e.id===eid),1);markMonth(ymOf(date));M.close()};
@@ -1260,6 +1267,56 @@ function openPublish(){
     M.close();toast(`Опубликовано: ${ch.length} дн. Сотрудники уже видят новое расписание`)};
 }
 
+/* ---------- клич на свободные смены ---------- */
+const offersFor=eid=>S.cfg.assistants.filter(a=>(S.offers[a.id]||{})[eid]);
+function callItems(){const out=[];(S.cfg.calls||[]).forEach(c=>(c.items||[]).forEach(it=>{if(it.d>=TODAY)out.push(Object.assign({call:c},it))}));return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.shift]-SHO[y.shift])}
+function pruneCalls(){if(!SUPA_ON||!(S.cfg.calls||[]).length)return;let ch=false;
+  withSrc(false,()=>S.cfg.calls.forEach(c=>{const n=c.items.filter(it=>{if(it.d<TODAY)return false;const f=findEntry(it.d,it.eid);return f&&!f.en.assistantId});if(n.length!==c.items.length){c.items=n;ch=true}}));
+  const k=S.cfg.calls.filter(c=>c.items.length);if(k.length!==S.cfg.calls.length){S.cfg.calls=k;ch=true}
+  if(ch)markCfg()}
+function openCalls(){
+  let from=UI.from<TODAY?TODAY:UI.from,to=UI.to,note='';
+  M.show(()=>{
+    const open=[];withSrc(false,()=>range(from,to).forEach(d=>{if(d<TODAY)return;forEntries(d,(en,cl,ch)=>{if(!en.assistantId)open.push({d,eid:en.id,cid:cl.id,ch,shift:en.shift,doc:docName(en.doctorId),clinic:cl.name})})}));
+    const inCall=new Set(callItems().map(i=>i.eid));const fresh=open.filter(o=>!inCall.has(o.eid));
+    const items=callItems();
+    return{title:'<h2>Клич на свободные смены</h2><p class="sub">Ассистенты увидят смены без ассистента и смогут откликнуться «Могу выйти». Вы выбираете, кого поставить.</p>',
+    body:`<div class="newp"><b>Новый клич</b><div class="row">
+        <label class="f">С<input type="date" id="kFrom" value="${from}"></label><label class="f">По<input type="date" id="kTo" value="${to}"></label></div>
+        <label class="f">Комментарий для ассистентов (необязательно)<input type="text" id="kNote" value="${esc(note)}" placeholder="Например: очень нужны люди на праздники"></label>
+        <p class="sub" style="margin:0">${fresh.length?`Смен без ассистента в периоде: <b class="num" style="color:var(--ink)">${fresh.length}</b>${open.length>fresh.length?` (ещё ${open.length-fresh.length} уже в кличе)`:''}`:'В этом периоде нет новых смен без ассистента.'}</p>
+        <div><button class="btn primary" data-act="call-send" ${fresh.length?'':'disabled'}>Отправить ассистентам</button></div></div>
+      ${items.length?`<div class="grp"><h3>Сейчас в кличе<span class="n num">${items.length}</span></h3>${items.map(it=>{const of=offersFor(it.eid);
+        return`<div class="urow"><div class="row" style="gap:8px"><span style="flex:1;min-width:0"><span class="nm">${fmt(it.d)} ${WD[wdOf(it.d)].toLowerCase()} · ${esc(shiftTime(it.shift))}</span><br><span class="why">${esc(it.clinic)}, кресло ${it.ch+1} · ${esc(it.doc)}</span></span>
+          <button class="btn sm ghost" data-act="call-drop" data-e="${it.eid}">Убрать</button></div>
+          ${of.length?`<div class="row" style="gap:6px"><span class="sub">Откликнулись:</span>${of.map(a=>`<button class="btn sm primary" data-act="call-take" data-d="${it.d}" data-e="${it.eid}" data-a="${a.id}">Поставить: ${esc(a.name)}</button>`).join('')}</div>`:'<span class="sub">Пока никто не откликнулся</span>'}</div>`}).join('')}</div>`:''}`,
+    foot:`${items.length?'<button class="btn danger" data-act="call-end">Закрыть весь клич</button>':''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`,
+    bind:r=>{r.querySelector('#kFrom').onchange=e=>{if(e.target.value){from=e.target.value;M.refresh()}};r.querySelector('#kTo').onchange=e=>{if(e.target.value){to=e.target.value;M.refresh()}};r.querySelector('#kNote').oninput=e=>{note=e.target.value}}};
+  },true);
+  ACT['call-send']=()=>{const inCall=new Set(callItems().map(i=>i.eid));const items=[];
+    withSrc(false,()=>range(from,to).forEach(d=>{if(d<TODAY)return;forEntries(d,(en,cl,ch)=>{if(!en.assistantId&&!inCall.has(en.id))items.push({d,eid:en.id,cid:cl.id,ch,shift:en.shift,doc:docName(en.doctorId),clinic:cl.name})})}));
+    if(!items.length)return;S.cfg.calls=(S.cfg.calls||[]).concat([{id:uid(),at:new Date().toISOString(),note:note.trim(),items}]);markCfg();note='';M.refresh();render();
+    toast(`Клич отправлен: ${items.length} смен. Ассистенты увидят его у себя`)};
+  ACT['call-drop']=b=>{S.cfg.calls.forEach(c=>c.items=c.items.filter(i=>i.eid!==b.dataset.e));S.cfg.calls=S.cfg.calls.filter(c=>c.items.length);markCfg();M.refresh();render()};
+  ACT['call-end']=b=>{if(!armed(b,'Точно закрыть?'))return;S.cfg.calls=[];markCfg();M.refresh();render()};
+  ACT['call-take']=b=>{const f=withSrc(false,()=>findEntry(b.dataset.d,b.dataset.e));if(!f){toast('Смена не найдена');return}
+    f.en.assistantId=b.dataset.a;markMonth(ymOf(b.dataset.d));pruneCalls();M.refresh();render();toast(asById(b.dataset.a)?.name+' поставлен(а). Не забудьте опубликовать')};
+}
+function viewCallsStaff(card){
+  const items=callItems();const mine=S.offers[card]||{};
+  const busy=it=>{let b=false;forEntries(it.d,en=>{if(en.assistantId===card&&overlap(en.shift,it.shift))b=true});return b};
+  const notes=[...new Set(items.map(i=>i.call.note).filter(Boolean))];
+  let h='',last='';
+  items.forEach(it=>{if(it.d!==last){if(last)h+='</div>';h+=`<div class="myday"><div class="mydate ${wdOf(it.d)>4?'we':''}"><b class="num">${fmt(it.d)}</b><span>${DAYF[wdOf(it.d)]}</span></div>`;last=it.d}
+    const on=!!mine[it.eid],bz=busy(it);
+    h+=`<div class="myshift">${shChip(it.shift)}<div style="flex:1;min-width:0"><div class="myt"><b>${esc(shiftTime(it.shift))}</b> · ${esc(it.clinic)}, кресло ${it.ch+1}</div><div class="mym">${esc(it.doc)}</div></div>
+      ${bz?'<span class="sub">вы заняты</span>':`<button class="btn sm ${on?'':'primary'}" data-act="call-offer" data-e="${it.eid}">${on?'Отменить отклик':'Могу выйти'}</button>`}</div>`});
+  if(last)h+='</div>';
+  return`<div><h1>Свободные смены</h1><p class="sub">Ответственному не хватает ассистентов на эти смены. Нажмите «Могу выйти» — он увидит отклик и решит, кого поставить.</p></div>
+    ${notes.map(n=>`<div class="note info">${esc(n)}</div>`).join('')}
+    ${items.length?`<div class="mylist">${h}</div>`:'<div class="boardwrap"><div class="empty-board"><h2>Свободных смен нет</h2><p>Когда ответственный объявит клич, смены появятся здесь.</p></div></div>'}`;
+}
+
 /* ---------- сбор дат с дедлайном ---------- */
 const daysLeft=dl=>Math.round((pd(dl)-pd(TODAY))/864e5);
 const collLocked=c=>TODAY>c.deadline;
@@ -1311,7 +1368,8 @@ function shiftList(items,kind){
 }
 function viewRole(){
   const role=ROLE(),card=myCard();
-  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'+(activeColl().some(c=>c.to>=TODAY)?' •':'')],['all','Общий график']]:[['mine','Мои смены'],['all','Общий график']];
+  const nCalls=role==='assistant'?callItems().length:0;
+  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'+(activeColl().some(c=>c.to>=TODAY)?' •':'')]].concat(nCalls?[['calls',`Свободные смены (${nCalls})`]]:[]).concat([['all','Общий график']]):[['mine','Мои смены'],['all','Общий график']];
   if(!tabs.some(t=>t[0]===UI.rtab))UI.rtab='mine';
   $('#tabs').innerHTML=tabs.length>1?tabs.map(([k,l])=>`<button class="tab" data-act="rtab" data-v="${k}" aria-current="${UI.rtab===k}">${l}</button>`).join(''):'';
   const person=role==='assistant'?asById(card):docById(card);
@@ -1321,6 +1379,7 @@ function viewRole(){
     return`<div><h1>Когда могу работать</h1><p class="sub">${esc(person.name)} · выберите режим и нажимайте на дни. Всё сохраняется сразу.</p></div><div class="mycal">${availCal(card)}</div>`;
   }
   if(UI.rtab==='all')return viewBoard();
+  if(UI.rtab==='calls')return viewCallsStaff(card);
   return`<div><h1>Мои смены</h1><p class="sub">${esc(person.name)} · с сегодняшнего дня</p></div>${shiftList(myShifts(role==='assistant'?'assistantId':'doctorId',card),role)}`;
 }
 /* ---------- generate ---------- */
@@ -1406,7 +1465,7 @@ function autofill(o){
       open=open.filter(e=>e!==t.en);
     }
   });
-  yms.forEach(markMonth);render();return{filled,left};
+  yms.forEach(markMonth);pruneCalls();render();return{filled,left};
 }
 
 /* ---------- settings ---------- */
@@ -1602,7 +1661,7 @@ const ACT={
   'open-gen':()=>{if(!S.cfg.clinics.length){UI.mode='week';render();toast('Сначала добавьте клинику');return}openGen()},
   'open-auto':openAuto,copy:copyTable,
   pick:b=>openPicker(b.dataset.d,b.dataset.e),
-  assign:b=>{const f=findEntry(b.dataset.d,b.dataset.e);if(!f)return;f.en.assistantId=b.dataset.a||null;MISS.delete(f.en.id);markMonth(ymOf(b.dataset.d));M.close()},
+  assign:b=>{const f=findEntry(b.dataset.d,b.dataset.e);if(!f)return;f.en.assistantId=b.dataset.a||null;MISS.delete(f.en.id);markMonth(ymOf(b.dataset.d));pruneCalls();M.close()},
   'edit-ent':b=>openEntryEdit(b.dataset.d,b.dataset.e),
   'add-ent':b=>openEntryEdit(b.dataset.d,null,{cid:b.dataset.c,ch:+b.dataset.ch}),
   avail:b=>openAvail(b.dataset.a),
@@ -1635,13 +1694,14 @@ const ACT={
     const box=document.querySelector('.scrollbox');const fx=box?box.scrollLeft/Math.max(1,box.scrollWidth):0,fy=box?box.scrollTop/Math.max(1,box.scrollHeight):0;
     render();const nb=document.querySelector('.scrollbox');if(nb){nb.scrollLeft=fx*nb.scrollWidth;nb.scrollTop=fy*nb.scrollHeight}},
   collect:()=>openCollect(),
+  calls:()=>openCalls(),
   invite:b=>{if(M.open)M.close();openInvite(b.dataset.r||'assistant',b.dataset.c||'')},
   bell:()=>openBell(),
   export:openExport,
   orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
   mback:(b,e)=>{if(e.target===b)M.close()}
 };
-const ROLE_OK=new Set(['dens','zoom','bell-go','pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
+const ROLE_OK=new Set(['call-offer','dens','zoom','bell-go','pw-eye','inv-skip','inv-logout','bell','bell-go','bell-read','rtab','av-brush','av-day','av-wd','av-m','av-clear','shift-period','export','ex-kind','ex-fmt','ex-run','ex-print','ex-copyimg','close','mback','logout','settings','auth-tab','auth-check','orient','copy']);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   if(SUPA_ON&&AUTHED&&!isAdmin()&&!ROLE_OK.has(a))return;
   if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
@@ -1726,6 +1786,8 @@ ACT['np-add']=b=>{const i=$('#npName');const name=i?i.value.trim():'';if(!name){
   markCfg();NP.open=false;const on=NP.on;if(on)on(p);if(M.open)M.refresh();render();toast((b.dataset.k==='doc'?'Врач ':'Ассистент ')+name+' добавлен')};
 ACT['rail-add']=()=>{NP={open:true,on:a=>{M.close();openAvail(a.id)}};
   M.show(()=>({title:'<h2>Новый ассистент</h2><p class="sub">После добавления откроется календарь — отметьте, когда он может работать.</p>',body:newPersonHTML('as',true),foot:'<button class="btn" data-act="close">Отмена</button>'}));setTimeout(()=>$('#npName')?.focus(),20)};
+ACT['call-offer']=b=>{const card=myCard();if(!card)return;const o=S.offers[card]=S.offers[card]||{};const e=b.dataset.e;
+  if(o[e])delete o[e];else o[e]=new Date().toISOString();markAvail(card);render();toast(o[e]?'Отклик отправлен ответственному':'Отклик отменён')};
 ACT['rtab']=b=>{UI.rtab=b.dataset.v;saveUI();render();window.scrollTo(0,0)};
 /* проверка новой версии (GitHub Pages кэширует страницу до 10 минут) */
 async function checkVersion(){if(!BUILD)return;
