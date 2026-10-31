@@ -1,0 +1,43 @@
+# Раз в день делает маленький запрос к базе Supabase, чтобы бесплатный проект не «засыпал».
+# Раз в ~45 дней без изменений в проекте добавляет служебную отметку: иначе GitHub
+# сам отключает расписание через 60 дней тишины.
+name: Не давать базе засыпать
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # каждый день в 06:17 по Москве
+  workflow_dispatch: {}      # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Запрос к базе
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://buynizqyabifntjqxgrx.supabase.co/rest/v1/orgs?select=id&limit=1" \
+            -H "apikey: sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw")
+          echo "Ответ базы: $code"
+          if [ "$code" != "200" ]; then
+            echo "База не ответила. Возможно, проект на паузе: откройте supabase.com и нажмите Resume project."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Не дать GitHub отключить расписание
+        run: |
+          last=$(git log -1 --format=%ct)
+          days=$(( ( $(date +%s) - last ) / 86400 ))
+          echo "Дней с последнего изменения: $days"
+          if [ "$days" -ge 45 ]; then
+            date -u +"%Y-%m-%d %H:%M UTC" > .github/keepalive.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/keepalive.txt
+            git commit -m "Служебная отметка для расписания"
+            git push
+          fi
