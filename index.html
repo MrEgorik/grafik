@@ -345,7 +345,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='31.10.2026 23:36'; // заполняется при выкладке на GitHub
+const BUILD='31.10.2026 23:42'; // заполняется при выкладке на GitHub
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
 const loginToEmail=l=>{l=l.trim().toLowerCase();return l.includes('@')?l:l+'@'+LOGIN_DOMAIN};
@@ -817,14 +817,14 @@ function classify(date,en,busy,load){
     const missing=need.filter(t=>!a.tags.includes(t)&&tagById(t));
     const matched=need.filter(t=>a.tags.includes(t)).length;
     const b=(busy[a.id]||[]).find(x=>overlap(x.shift,en.shift));
-    let group,reason='';
+    let group,reason='',sub='';
     if(doc&&doc.block.includes(a.id)){group='never';reason='не ставить к этому врачу'}
-    else if(b){group='no';reason='занят: '+b.label}
-    else if(!av){group='no';reason='дата не отмечена'}
-    else if(!(av==='day'||av===en.shift)){group='no';reason='может только '+SH[av].l.toLowerCase()}
+    else if(b){group='no';sub='busy';reason='занят: '+b.label}
+    else if(!av){group='no';sub='noday';reason='дата не отмечена'}
+    else if(!(av==='day'||av===en.shift)){group='no';sub='shift';reason='может только '+SH[av].l.toLowerCase()}
     else if(doc&&doc.prio.includes(a.id))group='prio';
     else group='can';
-    return{a,av,missing,matched,group,reason,load:load[a.id]||0};
+    return{a,av,missing,matched,group,sub,reason,load:load[a.id]||0};
   });
 }
 const sortCands=arr=>arr.sort((x,y)=>x.missing.length-y.missing.length||x.load-y.load||byName(x.a,y.a));
@@ -1066,10 +1066,10 @@ function openPicker(date,eid){
     const f=findEntry(date,eid);if(!f)return{title:'Смена удалена',body:''};
     const{en,cl}=f;const load=loadMap();
     const cs=classify(date,en,busyMap(date,en.id),load);
-    const groups=[['prio','Приоритет'],['can','Могут в эту смену'],['no','Не могут'],['never','Точно не ставить']];
-    const body=groups.map(([g,l])=>{const arr=sortCands(cs.filter(c=>c.group===g));
+    const groups=[['prio','Приоритет',c=>c.group==='prio'],['can','Могут в эту смену',c=>c.group==='can'],['no','Заняты у другого врача',c=>c.sub==='busy'],['no','Отметили другое время',c=>c.sub==='shift'],['no','Не отметили этот день',c=>c.sub==='noday'],['never','Точно не ставить',c=>c.group==='never']];
+    const body=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&gi>1)return'';
       return`<div class="grp ${g}"><h3>${l}<span class="n num">${arr.length}</span></h3>${arr.map(c=>{
-        const why=[c.reason,c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
+        const why=[c.sub==='noday'?'':c.reason.replace(/^занят: /,''),c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
         return`<button class="cand ${en.assistantId===c.a.id?'cur':''}" data-act="assign" data-d="${date}" data-e="${eid}" data-a="${c.a.id}">
           <span><span class="nm">${esc(c.a.name)}</span>${why?`<br><span class="why">${esc(why)}</span>`:''}</span>
           <span class="r num">${c.av?SH[c.av].l:''}<br>${c.load} смен${SET().rates&&num(c.a.rate)!=null?' · '+rub(shiftCost(c.a,en.shift)):''}</span></button>`}).join('')||'<div class="list-empty">—</div>'}</div>`}).join('');
