@@ -1,0 +1,1179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>График ассистентов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,700&family=Unbounded:wght@500;600&display=swap">
+<style>
+/* Layout: верхняя полоса с разделами; «Расписание» = широкая доска кресла×даты + колонка ассистентов справа */
+:root{
+  --bg:#F2F5F5; --surface:#FFFFFF; --sunk:#E7EDED; --line:#D2DCDC; --ink:#122A2C; --muted:#587173;
+  --accent:#0D6D69; --accent-ink:#FFFFFF; --accent-soft:#D4EBE9;
+  --am:#B8740F; --am-soft:#FBEBD0; --pm:#4F4FC9; --pm-soft:#E5E5FA; --day:#0D6D69; --day-soft:#D4EBE9;
+  --ok:#24804F; --ok-soft:#DAF0E2; --warn:#9C6512; --warn-soft:#FAEED3; --bad:#BC3A33; --bad-soft:#F8DEDC;
+  --font-display:"Unbounded","Onest",system-ui,sans-serif;
+  --font-body:"Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1718; --surface:#152223; --sunk:#1B2B2C; --line:#2A3E3F; --ink:#E2EDED; --muted:#92A9AA;
+  --accent:#3DB2AA; --accent-ink:#03201E; --accent-soft:#133A38;
+  --am:#EDB45E; --am-soft:#3A2B12; --pm:#A0A0F6; --pm-soft:#25254B; --day:#3DB2AA; --day-soft:#133A38;
+  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1718; --surface:#152223; --sunk:#1B2B2C; --line:#2A3E3F; --ink:#E2EDED; --muted:#92A9AA;
+  --accent:#3DB2AA; --accent-ink:#03201E; --accent-soft:#133A38;
+  --am:#EDB45E; --am-soft:#3A2B12; --pm:#A0A0F6; --pm-soft:#25254B; --day:#3DB2AA; --day-soft:#133A38;
+  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-block:14px 10px;border-bottom:1px solid var(--line)}
+.brand{font-family:var(--font-display);font-weight:600;font-size:16px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.brand i{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink);font-style:normal;font-size:13px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{border:0;background:transparent;padding:8px 14px;border-radius:999px;font-weight:600;color:var(--muted)}
+.tab[aria-current="true"]{background:var(--ink);color:var(--bg)}
+.store{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.store b{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.store.on b{background:var(--ok)} .store.warn b{background:var(--warn)}
+
+main{padding-top:18px;display:flex;flex-direction:column;gap:16px}
+h1{font-family:var(--font-display);font-weight:600;font-size:20px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--font-display);font-weight:500;font-size:14px;margin:0;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 13px;border-radius:8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.danger{color:var(--bad)} .btn.danger.armed{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.seg{display:inline-flex;background:var(--sunk);border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.12)}
+input[type=text],input[type=date],input[type=tel],input[type=email],input[type=password],select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+textarea{width:100%;resize:vertical}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:600}
+label.f input,label.f select{color:var(--ink);font-weight:400;font-size:14px}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.chk input{margin-top:3px}
+
+/* shift chips */
+.sh{display:inline-grid;place-items:center;min-width:22px;height:20px;padding:0 5px;border-radius:5px;font-size:11px;font-weight:700}
+.sh.day{background:var(--day-soft);color:var(--day)} .sh.am{background:var(--am-soft);color:var(--am)} .sh.pm{background:var(--pm-soft);color:var(--pm)}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--sunk);font-size:12px;border:1px solid transparent;white-space:nowrap}
+.tag.miss{background:var(--warn-soft);color:var(--warn)}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.pick-tags .tag{cursor:pointer;padding:4px 10px;border:1px solid var(--line);background:var(--surface)}
+.pick-tags .tag[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);font-weight:600}
+.pick-tags .tag.neg[aria-pressed="true"]{background:var(--bad-soft);border-color:var(--bad)}
+
+/* banner */
+.note{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px}
+.note.info{border-left-color:var(--accent)}
+
+/* schedule layout */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.period{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.status{display:flex;gap:14px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.status b{color:var(--ink)} .status .bad b{color:var(--bad)}
+.sched{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}
+@media (max-width:1000px){.sched{grid-template-columns:minmax(0,1fr)}.rail{order:-1}}
+.boardwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+table.board{border-collapse:separate;border-spacing:0;font-size:13px}
+.board th,.board td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);vertical-align:top}
+.board thead th{position:sticky;top:0;background:var(--surface);padding:8px 8px;text-align:left;font-weight:600;white-space:nowrap;z-index:2}
+.board thead th .d{font-size:15px}
+.board thead th.we{color:var(--bad)} .board thead th.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.board .lab{position:sticky;left:0;background:var(--surface);z-index:1;padding:8px 10px;font-weight:600;white-space:nowrap;color:var(--muted);font-size:12px;min-width:74px}
+.board thead .lab{z-index:3}
+.board tr.cl td{background:var(--sunk);padding:6px 10px;font-family:var(--font-display);font-weight:500;font-size:12px;letter-spacing:.02em;position:sticky;left:0}
+.board td.c{width:168px;min-width:168px;padding:5px;background:var(--surface)}
+.board td.c.we{background:color-mix(in srgb,var(--sunk) 45%,var(--surface))}
+.ent{border-radius:8px;padding:6px 7px;display:flex;flex-direction:column;gap:5px;background:var(--bg);border:1px solid var(--line)}
+.ent+.ent{margin-top:5px}
+.ent .h{display:flex;gap:6px;align-items:center}
+.ent .doc{border:0;background:none;padding:0;font-weight:600;text-align:left;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ent .doc:hover{color:var(--accent)}
+.ent .tags .tag{font-size:11px;padding:1px 6px}
+.as{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:5px 7px;text-align:left;font-size:12.5px;display:flex;align-items:center;gap:6px;width:100%}
+.as.empty{border-style:dashed;color:var(--muted)}
+.as.empty.miss{border-color:var(--bad);background:var(--bad-soft);color:var(--bad);font-weight:600}
+.as.warn{border-color:var(--warn)}
+.as .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.as.warn .dot{background:var(--warn)}
+.addent{border:1px dashed var(--line);background:transparent;border-radius:7px;width:100%;padding:3px;color:var(--muted);font-size:12px;margin-top:5px;opacity:.7}
+.addent:hover{opacity:1;color:var(--accent);border-color:var(--accent)}
+.empty-board{padding:36px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted)}
+.empty-board h2{color:var(--ink)}
+
+/* rail */
+.board .cost{font-size:11px;color:var(--muted);flex:none}
+.board.vert thead tr:first-child th{top:0} .board.vert thead tr:nth-child(2) th{top:37px}
+.board.vert .clh{font-family:var(--font-display);font-weight:500;font-size:12px;background:var(--sunk);letter-spacing:.02em}
+.board.vert .chh{font-size:12px;color:var(--muted)}
+.board.vert .first{border-left:2px solid var(--line)}
+.board.vert .dl{text-align:left;color:var(--ink)}
+.board.vert .dl .d{font-size:15px}
+.board.vert tr.we .dl{background:color-mix(in srgb,var(--sunk) 45%,var(--surface))}
+.board.vert .wer{color:var(--bad);font-size:13px}
+.board.vert tr.today .dl{box-shadow:inset 3px 0 0 var(--accent)}
+.rail{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);position:sticky;top:76px}
+@media (max-width:1000px){.rail{position:static}}
+.rail summary{list-style:none;padding:12px 14px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.rail summary::-webkit-details-marker{display:none}
+.rail summary .chev{margin-left:auto;color:var(--muted);transition:transform .15s}
+.rail[open] summary .chev{transform:rotate(90deg)}
+.rail .list{border-top:1px solid var(--line);max-height:65vh;overflow:auto}
+.ra{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:9px 14px;border-bottom:1px solid var(--line)}
+.ra:hover{background:var(--bg)}
+.ra .nm{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ra .meta{font-size:12px;color:var(--muted);text-align:right;line-height:1.3}
+.ra .meta .z{color:var(--warn);font-weight:600}
+.rail .foot{padding:10px 14px;font-size:12px;color:var(--muted)}
+
+/* template grid */
+.tpl{border-collapse:separate;border-spacing:0}
+.tpl th,.tpl td{border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.tpl thead th{padding:8px;font-weight:600;text-align:left;background:var(--surface)}
+.tpl td.c{width:150px;min-width:150px;padding:5px;vertical-align:top}
+.tcell{width:100%;min-height:58px;border:1px dashed var(--line);border-radius:8px;background:transparent;display:flex;flex-direction:column;gap:4px;padding:6px;text-align:left}
+.tcell:hover{border-color:var(--accent)}
+.tcell .e{display:flex;gap:6px;align-items:center;font-weight:600;font-size:12.5px;min-width:0}
+.tcell .e span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcell .plus{color:var(--muted);font-size:12px;margin:auto}
+
+/* cards list */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;text-align:left;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card:hover{border-color:var(--accent)}
+.card .t{font-weight:700;font-size:15px;display:flex;gap:8px;align-items:center}
+.card .k{font-size:12px;color:var(--muted)}
+.card .k b{color:var(--ink);font-weight:500}
+.ex{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--warn);background:var(--warn-soft);padding:1px 6px;border-radius:4px}
+.addbar{display:flex;gap:8px;flex-wrap:wrap}
+.addbar input{flex:1;min-width:180px}
+
+/* modal */
+.mback{position:fixed;inset:0;background:rgb(10 20 22/.45);z-index:20;display:flex;align-items:flex-start;justify-content:center;padding:max(24px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) 24px max(12px,env(safe-area-inset-left,0px));overflow:auto}
+.modal{background:var(--surface);border-radius:14px;width:min(560px,100%);box-shadow:0 20px 50px rgb(0 0 0/.25);display:flex;flex-direction:column}
+.modal.wide{width:min(720px,100%)}
+.mh{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 10px}
+.mh .ttl{flex:1;min-width:0}
+.mb{padding:4px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.x{border:0;background:var(--sunk);width:30px;height:30px;border-radius:8px;font-size:16px;flex:none}
+.grp h3{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);display:flex;gap:6px;align-items:center}
+.grp h3 .n{background:var(--sunk);border-radius:999px;padding:0 7px;font-weight:700}
+.grp.prio h3{color:var(--accent)} .grp.can h3{color:var(--ok)} .grp.never h3{color:var(--bad)}
+.cand{display:flex;gap:10px;align-items:center;width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;text-align:left}
+.cand+.cand{margin-top:5px}
+.cand:hover{border-color:var(--accent)}
+.cand .nm{font-weight:600}
+.cand .why{font-size:12px;color:var(--muted)}
+.cand .r{margin-left:auto;text-align:right;font-size:12px;color:var(--muted);flex:none}
+.cand.cur{border-color:var(--accent);background:var(--accent-soft)}
+.grp.no .cand,.grp.never .cand{opacity:.72}
+.list-empty{font-size:13px;color:var(--muted);padding:2px 0}
+
+/* calendar */
+.brush{display:flex;gap:6px;flex-wrap:wrap}
+.brush button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-weight:600;font-size:13px;display:flex;gap:6px;align-items:center}
+.brush button[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wh{font-size:11px;color:var(--muted);font-weight:700;text-align:center;padding:2px 0;border:0;background:none;border-radius:6px}
+.cal button.wh:hover{background:var(--sunk);color:var(--ink)}
+.cal .dd{aspect-ratio:1/1;max-width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-weight:600;font-variant-numeric:tabular-nums;padding:0}
+.cal .dd.out{visibility:hidden}
+.cal .dd.day{background:var(--day-soft);border-color:var(--day)} .cal .dd.am{background:var(--am-soft);border-color:var(--am)} .cal .dd.pm{background:var(--pm-soft);border-color:var(--pm)}
+.cal .dd small{font-size:10px;font-weight:700}
+.cal .dd.day small{color:var(--day)} .cal .dd.am small{color:var(--am)} .cal .dd.pm small{color:var(--pm)}
+.cal .dd.inp{outline:2px solid var(--ink);outline-offset:-1px}
+.mnav{display:flex;align-items:center;gap:8px}
+.mnav b{font-family:var(--font-display);font-weight:500;font-size:14px;min-width:140px;text-align:center}
+
+.opt{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:14px;cursor:pointer}
+.opt input{margin-top:4px;width:16px;height:16px;accent-color:var(--accent);flex:none}
+.opt.dis{opacity:.5;cursor:default}
+.sh3{margin:0 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.preview{max-width:100%;border:1px solid var(--line);border-radius:8px;display:block}
+.busy{opacity:.6;pointer-events:none}
+/* бумажный вид для экспорта — всегда светлый, как в привычном вордовском графике */
+.xp{width:1123px;padding:26px 30px 22px;background:#FFFFFF;color:#000000;font-family:"PT Serif","Times New Roman",Times,serif;font-size:13px;line-height:1.25}
+.xp+.xp{border-top:2px dashed #BBBBBB}
+.xtop{font-weight:700;font-size:13px;margin-bottom:8px}
+.xg{width:100%;border-collapse:collapse;table-layout:fixed}
+.xg th,.xg td{border:1px solid #000000;padding:2px 5px;vertical-align:top;overflow:hidden}
+.xg th{font-weight:700;font-style:italic;text-align:center;padding:5px}
+.xg .xband td{background:#DCE6F1;height:8px;padding:0}
+.xg td.xday{font-style:italic} .xg td.xday b{font-weight:700}
+.xg td.xday.we b{color:#000000}
+.xg td.xcl{background:#D9D9D9;font-weight:700;font-style:italic}
+.xch{font-size:14px}
+.xsub{display:block;font-style:italic;font-size:12px;color:#444444}
+.xsub.xn{color:#C00000}
+.xfoot{text-align:right;font-weight:700;font-style:italic;margin-top:6px}
+#printArea{display:none}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  body{padding:0!important;background:#FFFFFF!important}
+  body>*:not(#printArea){display:none!important}
+  body::before{display:none}
+  #printArea{display:block}
+  #printArea .xp{width:auto;padding:0;page-break-after:always;break-after:page}
+  #printArea .xp:last-child{page-break-after:auto;break-after:auto}
+  #printArea .xp+.xp{border-top:0}
+  .xg .xband td,.xg td.xcl{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+.login{max-width:360px;margin:48px auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:12px}
+.loginf{display:flex;flex-direction:column;gap:12px}
+.lgerr{color:var(--bad);margin:0;font-size:13px;font-weight:600}
+.warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.warnlist li::marker{color:var(--warn)}
+.okline{color:var(--ok);font-weight:600}
+
+.toast{position:fixed;left:50%;bottom:max(20px,calc(env(safe-area-inset-bottom,0px) + 12px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:30;font-size:13px;font-weight:500;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgb(0 0 0/.25)}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap;align-items:center}
+.legend span{display:inline-flex;gap:5px;align-items:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="brand"><i>A</i>График ассистентов</div>
+  <nav class="tabs" id="tabs"></nav>
+  <div class="store" id="store"><b></b><span>Загрузка…</span></div>
+  <button class="btn sm" data-act="settings">Настройки</button>
+</header>
+<main id="main"></main>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+/* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
+const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
+const SUPA_ON=!!(SUPA.url&&SUPA.key);
+/* ---------- utils ---------- */
+const STANDALONE=!(window.claude&&window.claude.use);
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const SH={day:{s:'Д',l:'Весь день'},am:{s:'У',l:'Утро'},pm:{s:'В',l:'Вечер'}};
+const WD=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const pd=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addDays=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return iso(d)};
+const wdOf=s=>(pd(s).getDay()+6)%7;
+const ymOf=s=>s.slice(0,7);
+const fmt=s=>{const d=pd(s);return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')};
+const fmtL=s=>WD[wdOf(s)].toLowerCase()+' '+fmt(s);
+function range(a,b){const o=[];if(!a||!b||a>b)return o;let c=a;for(let i=0;i<190&&c<=b;i++){o.push(c);c=addDays(c,1)}return o}
+const shChip=s=>`<span class="sh ${s}" title="${SH[s]?.l||''}">${SH[s]?.s||'?'}</span>`;
+const TODAY=iso(new Date());
+
+/* ---------- state ---------- */
+const S={cfg:{tags:[],doctors:[],assistants:[],clinics:[]},avail:{},months:{}};
+function loadUI(){try{const u=JSON.parse(localStorage.getItem('asst-ui')||'null');if(u)return u}catch(e){}return null}
+let UI=Object.assign({orient:'h',tab:'sched',mode:'board',from:TODAY,to:addDays(TODAY,13),clinic:null,railOpen:window.innerWidth>1000},loadUI()||{});
+const MISS=new Map(); // entryId -> reason, после автозаполнения
+function saveUI(){try{localStorage.setItem('asst-ui',JSON.stringify(UI))}catch(e){}}
+
+const tagById=id=>S.cfg.tags.find(t=>t.id===id);
+const docById=id=>S.cfg.doctors.find(d=>d.id===id);
+const asById=id=>S.cfg.assistants.find(a=>a.id===id);
+const clById=id=>S.cfg.clinics.find(c=>c.id===id);
+const docName=id=>docById(id)?.name||'—';
+const byName=(a,b)=>a.name.localeCompare(b.name,'ru');
+
+/* ---------- storage ---------- */
+const LKEY='asst-data-v1';
+const Store={
+  mode:'local',db:null,dirty:new Set(),ver:{},timers:{},chains:{},readonly:false,
+  mark(path){
+    if(this.readonly){toast('Нет прав на изменение этих данных');return}
+    this.dirty.add(path);this.ver[path]=(this.ver[path]||0)+1;
+    clearTimeout(this.timers[path]);this.timers[path]=setTimeout(()=>this.flush(path),450);
+  },
+  body(path){
+    if(path==='cfg/main')return clone(S.cfg);
+    const[col,id]=path.split('/');
+    if(col==='avail')return S.avail[id]?{dates:clone(S.avail[id])}:null;
+    if(col==='months')return S.months[id]&&Object.keys(S.months[id]).length?{days:clone(S.months[id])}:null;
+  },
+  flush(path){
+    const v=this.ver[path];
+    if(this.mode==='supa'){
+      const body=this.body(path);const prev=this.chains[path]||Promise.resolve();
+      this.chains[path]=prev.then(async()=>{
+        const r=body?await SB.from('docs').upsert({path,data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',path);
+        if(r.error){toast(/row-level|permission/i.test(r.error.message)?'Нет прав на изменение':'Не удалось сохранить. Проверьте интернет');console.warn(r.error)}
+      }).finally(()=>{if(this.ver[path]===v)this.dirty.delete(path)});
+      return;
+    }
+    if(this.mode!=='db'){try{localStorage.setItem(LKEY,JSON.stringify(S))}catch(e){}this.dirty.delete(path);return}
+    const body=this.body(path);
+    const prev=this.chains[path]||Promise.resolve();
+    this.chains[path]=prev.then(async()=>{
+      const ref=this.db.doc(path);
+      for(let i=0;i<2;i++){try{body?await ref.set(body):await ref.delete();break}
+        catch(e){if(e&&e.code==='unavailable'&&i===0){await new Promise(r=>setTimeout(r,600+Math.random()*600));continue}writeErr(e);break}}
+    }).finally(()=>{if(this.ver[path]===v)this.dirty.delete(path)});
+  }
+};
+function writeErr(e){
+  const c=e&&e.code;
+  if(c==='invalid_argument'){Store.readonly=true;toast('Изменения не сохраняются: у вас доступ только для просмотра')}
+  else if(c==='quota_exceeded')toast('Хранилище заполнено — удалите старые месяцы расписания');
+  else toast('Не удалось сохранить изменение. Проверьте связь');
+}
+const markCfg=()=>Store.mark('cfg/main');
+const markMonth=ym=>Store.mark('months/'+ym);
+const markAvail=id=>Store.mark('avail/'+id);
+
+function normalize(){
+  const c=S.cfg;['tags','doctors','assistants','clinics'].forEach(k=>{if(!Array.isArray(c[k]))c[k]=[]});
+  c.doctors.forEach(d=>{d.tags=d.tags||[];d.prio=d.prio||[];d.block=d.block||[]});
+  c.assistants.forEach(a=>{a.tags=a.tags||[]});
+  c.clinics.forEach(k=>{k.chairs=Math.max(1,k.chairs|0||1);k.template=k.template||{}});
+  c.settings=Object.assign({rates:false,cheap:false,showTags:true,useTimes:true},c.settings||{});c.settings.times=Object.assign({am:'9-14',pm:'15-21',day:'9-21'},c.settings.times||{});
+}
+const SET=()=>S.cfg.settings||{rates:false,cheap:false,showTags:true};
+const num=v=>{const n=parseFloat(String(v??'').replace(',','.').replace(/\s/g,''));return isFinite(n)&&n>=0?n:null};
+function shiftCost(a,shift){if(!a)return 0;const d=num(a.rate),h=num(a.rateHalf);if(shift==='day')return d??0;return h??(d!=null?d/2:0)}
+const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
+function costMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{if(en.assistantId){const a=asById(en.assistantId);m[en.assistantId]=(m[en.assistantId]||0)+shiftCost(a,en.shift)}}));return m}
+function setStore(cls,text){const el=$('#store');el.className='store '+cls;el.lastElementChild.textContent=text}
+
+let SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false;
+const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
+function applyDoc(path,data){const[col,id]=path.split('/');
+  if(col==='cfg'&&id==='main'){S.cfg=clone(data);normalize()}
+  else if(col==='avail')S.avail[id]=clone(data.dates||{});
+  else if(col==='months')S.months[id]=clone(data.days||{})}
+function removeDoc(path){const[col,id]=path.split('/');if(col==='avail')delete S.avail[id];else if(col==='months')delete S.months[id]}
+async function initSupa(){
+  Store.mode='supa';setStore('','Подключение…');
+  let ok=false;for(const src of SB_LIBS){try{await loadLib(src);ok=!!window.supabase;if(ok)break}catch(e){}}
+  if(!ok){setStore('warn','Нет связи');LOGIN_ERR='Нет связи с интернетом. Проверьте подключение и обновите страницу.';render();return}
+  SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});
+  SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;setStore('warn','Не выполнен вход');render()}});
+  const{data}=await SB.auth.getSession();
+  if(!data||!data.session){setStore('warn','Не выполнен вход');render();return}
+  await afterLogin();
+}
+async function afterLogin(){
+  setStore('','Загрузка…');
+  const{data,error}=await SB.from('docs').select('path,data');
+  if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
+  S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};
+  data.forEach(r=>applyDoc(r.path,r.data));normalize();
+  AUTHED=true;LOGIN_ERR='';
+  SB.channel('docs-live').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
+    const path=(p.new&&p.new.path)||(p.old&&p.old.path);if(!path||Store.dirty.has(path))return;
+    if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
+  }).subscribe();
+  setStore('on','Сохраняется в базе');render();
+}
+function viewLogin(){
+  return`<div class="login"><h1>Вход</h1><p class="sub">График ассистентов</p>
+  <form id="loginForm" class="loginf"><label class="f">Почта<input type="email" id="lgEmail" autocomplete="username" required></label>
+  <label class="f">Пароль<input type="password" id="lgPass" autocomplete="current-password" required></label>
+  ${LOGIN_ERR?`<p class="lgerr">${esc(LOGIN_ERR)}</p>`:''}
+  <button class="btn primary ${LOGIN_BUSY?'busy':''}" ${SB?'':'disabled'}>${LOGIN_BUSY?'Вход…':'Войти'}</button></form>
+  <p class="sub">Логины выдаёт администратор программы.</p></div>`;
+}
+async function doLogin(){
+  if(!SB||LOGIN_BUSY)return;const email=$('#lgEmail').value.trim(),password=$('#lgPass').value;
+  LOGIN_BUSY=true;LOGIN_ERR='';render();
+  const{error}=await SB.auth.signInWithPassword({email,password});
+  LOGIN_BUSY=false;
+  if(error){LOGIN_ERR=/invalid/i.test(error.message)?'Неверная почта или пароль':'Не удалось войти: '+error.message;render();setTimeout(()=>{const e=$('#lgEmail');if(e)e.value=email},0);return}
+  await afterLogin();
+}
+async function initStore(){
+  if(SUPA_ON){await initSupa();return}
+  let db=null,timer;
+  try{db=window.claude&&window.claude.use?await window.claude.use('db'):null}catch(e){db=null}
+  if(!db){
+    Store.mode='local';
+    try{const raw=localStorage.getItem(LKEY);if(raw){const d=JSON.parse(raw);Object.assign(S,d)}}catch(e){}
+    normalize();setStore('warn',STANDALONE?'Офлайн · данные на этом компьютере':'Только в этом браузере');render();return;
+  }
+  Store.mode='db';Store.db=db;setStore('','Подключение…');
+  timer=setTimeout(()=>setStore('warn','Нет связи с хранилищем'),10000);
+  const ok=snap=>{if(!snap.metadata.fromCache){clearTimeout(timer);setStore('on','Сохраняется автоматически')}};
+  const fail=e=>{clearTimeout(timer);setStore('warn','Хранилище недоступно')};
+  db.doc('cfg/main').onSnapshot(s=>{
+    if(!Store.dirty.has('cfg/main')&&s.exists){S.cfg=clone(s.data());normalize();renderSoft()}
+    ok(s);
+  },fail);
+  db.collection('avail').onSnapshot(q=>{
+    const next={};q.docs.forEach(d=>{next[d.id]=clone(d.data().dates||{})});
+    Object.keys(S.avail).forEach(id=>{if(Store.dirty.has('avail/'+id))next[id]=S.avail[id]});
+    S.avail=next;renderSoft();ok(q);
+  },fail);
+  db.collection('months').onSnapshot(q=>{
+    const next={};q.docs.forEach(d=>{next[d.id]=clone(d.data().days||{})});
+    Object.keys(S.months).forEach(id=>{if(Store.dirty.has('months/'+id))next[id]=S.months[id]});
+    S.months=next;renderSoft();ok(q);
+  },fail);
+  try{const u=await window.claude.use('user');const w=u&&await u.can('data.write');if(w===false){Store.readonly=true;setStore('warn','Только просмотр')}}catch(e){}
+}
+let softT;function renderSoft(){clearTimeout(softT);softT=setTimeout(()=>{render();if(M.open)M.refresh()},60)}
+
+/* ---------- schedule data ---------- */
+function dayObj(date,create){const ym=ymOf(date);if(!S.months[ym]){if(!create)return null;S.months[ym]={}}const m=S.months[ym];if(!m[date]){if(!create)return null;m[date]={}}return m[date]}
+function cellArr(date,cid,ch,create){const d=dayObj(date,create);if(!d)return[];if(!d[cid]){if(!create)return[];d[cid]={}}const c=d[cid];if(!c[ch]){if(!create)return[];c[ch]=[]}return c[ch]}
+function forEntries(date,fn){const d=dayObj(date,false);if(!d)return;for(const cl of S.cfg.clinics){const c=d[cl.id];if(!c)continue;for(let ch=0;ch<cl.chairs;ch++){(c[ch]||[]).forEach(en=>fn(en,cl,ch))}}}
+function findEntry(date,eid){let r=null;forEntries(date,(en,cl,ch)=>{if(en.id===eid)r={en,cl,ch}});return r}
+const overlap=(a,b)=>a==='day'||b==='day'||a===b;
+function loadMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{if(en.assistantId)m[en.assistantId]=(m[en.assistantId]||0)+1}));return m}
+function busyMap(date,exceptId){const m={};forEntries(date,(en,cl)=>{if(en.id===exceptId||!en.assistantId)return;(m[en.assistantId]=m[en.assistantId]||[]).push({shift:en.shift,label:cl.name+', '+docName(en.doctorId)})});return m}
+function classify(date,en,busy,load){
+  const doc=docById(en.doctorId);const need=en.tags||[];
+  return S.cfg.assistants.map(a=>{
+    const av=(S.avail[a.id]||{})[date]||null;
+    const missing=need.filter(t=>!a.tags.includes(t)&&tagById(t));
+    const matched=need.filter(t=>a.tags.includes(t)).length;
+    const b=(busy[a.id]||[]).find(x=>overlap(x.shift,en.shift));
+    let group,reason='';
+    if(doc&&doc.block.includes(a.id)){group='never';reason='не ставить к этому врачу'}
+    else if(b){group='no';reason='занят: '+b.label}
+    else if(!av){group='no';reason='дата не отмечена'}
+    else if(!(av==='day'||av===en.shift)){group='no';reason='может только '+SH[av].l.toLowerCase()}
+    else if(doc&&doc.prio.includes(a.id))group='prio';
+    else group='can';
+    return{a,av,missing,matched,group,reason,load:load[a.id]||0};
+  });
+}
+const sortCands=arr=>arr.sort((x,y)=>x.missing.length-y.missing.length||x.load-y.load||byName(x.a,y.a));
+function entryWarn(date,en){
+  if(!en.assistantId)return'';const a=asById(en.assistantId);if(!a)return'';
+  const c=classify(date,en,busyMap(date,en.id),{}).find(x=>x.a.id===a.id);
+  if(!c)return'';if(c.group==='no'||c.group==='never')return c.reason;
+  if(c.missing.length)return'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', ');return'';
+}
+
+/* ---------- render ---------- */
+function render(){
+  if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=viewLogin();return}
+  $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
+  const m=$('#main');
+  if(UI.tab==='sched')m.innerHTML=UI.mode==='week'?viewWeek():viewBoard();
+  else if(UI.tab==='doctors')m.innerHTML=viewDoctors();
+  else m.innerHTML=viewAssistants();
+}
+function exampleBanner(){
+  const n=S.cfg.doctors.filter(d=>d.example).length+S.cfg.assistants.filter(a=>a.example).length;
+  if(!n)return'';
+  return`<div class="note">Сейчас в программе примерные врачи и ассистенты, чтобы было видно, как всё работает. Заведите своих и удалите примеры.<span class="spacer"></span><button class="btn sm danger" data-act="del-examples" id="delex">Удалить примеры</button></div>`;
+}
+function schedHead(){
+  return`<div class="row"><div><h1>Расписание</h1></div><span class="spacer"></span>
+  <div class="seg" role="group"><button data-act="mode" data-v="board" aria-pressed="${UI.mode==='board'}">График</button><button data-act="mode" data-v="week" aria-pressed="${UI.mode==='week'}">Базовая неделя и клиники</button></div></div>`;
+}
+function cellHTML(d,cl,ch){
+  const arr=cellArr(d,cl.id,ch,false);const dayExists=!!(dayObj(d,false)||{})[cl.id];const st=SET();let h='';
+  arr.forEach(en=>{
+    const a=asById(en.assistantId);const wr=a?entryWarn(d,en):'';const miss=MISS.get(en.id);
+    const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
+    h+=`<div class="ent"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="Изменить смену врача">${esc(docName(en.doctorId))}</button></div>`;
+    if(tg.length&&st.showTags)h+=`<div class="tags">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`;
+    h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
+       :`<button class="as empty ${miss?'miss':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${miss?'Не нашлось ассистента':'+ ассистент'}</button>`;
+    h+=`</div>`;
+  });
+  const full=arr.some(e=>e.shift==='day')||arr.length>=2;
+  if(!full&&dayExists)h+=`<button class="addent" data-act="add-ent" data-d="${d}" data-c="${cl.id}" data-ch="${ch}" aria-label="Добавить врача">+ врач</button>`;
+  return h;
+}
+// даты по горизонтали: строки = кресла, столбцы = дни
+function boardH(dates,cls){
+  let h=`<table class="board"><thead><tr><th class="lab">Кресло</th>`;
+  dates.forEach(d=>{const w=wdOf(d);h+=`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`});
+  h+=`</tr></thead><tbody>`;
+  cls.forEach(cl=>{
+    h+=`<tr class="cl"><td colspan="${dates.length+1}"><span style="position:sticky;left:10px">${esc(cl.name)}</span></td></tr>`;
+    for(let ch=0;ch<cl.chairs;ch++){
+      h+=`<tr><th class="lab">Кресло ${ch+1}</th>`;
+      dates.forEach(d=>{h+=`<td class="c ${wdOf(d)>4?'we':''}">${cellHTML(d,cl,ch)}</td>`});
+      h+=`</tr>`;
+    }
+  });
+  return h+`</tbody></table>`;
+}
+// даты по вертикали: строки = дни, столбцы = кресла по клиникам
+function boardV(dates,cls){
+  let h=`<table class="board vert"><thead><tr><th class="lab" rowspan="2">Дата</th>`;
+  cls.forEach(cl=>{h+=`<th class="clh" colspan="${cl.chairs}">${esc(cl.name)}</th>`});
+  h+=`</tr><tr>`;
+  cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<th class="chh ${ch===0?'first':''}">Кресло ${ch+1}</th>`});
+  h+=`</tr></thead><tbody>`;
+  dates.forEach(d=>{const w=wdOf(d);
+    h+=`<tr class="${w>4?'we':''} ${d===TODAY?'today':''}"><th class="lab dl"><div class="d num">${fmt(d)}</div><div class="${w>4?'wer':'sub'}">${WD[w]}</div></th>`;
+    cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<td class="c ${w>4?'we':''} ${ch===0?'first':''}">${cellHTML(d,cl,ch)}</td>`});
+    h+=`</tr>`;
+  });
+  return h+`</tbody></table>`;
+}
+function viewBoard(){
+  const dates=range(UI.from,UI.to);
+  const cls=S.cfg.clinics;
+  let has=false,total=0,empty=0,warn=0;
+  dates.forEach(d=>{if(dayObj(d,false))has=true;forEntries(d,en=>{total++;if(!en.assistantId)empty++;else if(entryWarn(d,en))warn++})});
+  const load=loadMap();
+  let board;
+  if(!cls.length){board=`<div class="empty-board"><h2>Нет клиник</h2><p>Добавьте клинику, укажите количество кресел и обычную неделю врачей.</p><button class="btn primary" data-act="mode" data-v="week">Настроить клиники</button></div>`}
+  else if(!has){board=`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`}
+  else{
+    board=UI.orient==='v'?boardV(dates,cls):boardH(dates,cls);
+  }
+  const st=SET();const cost=st.rates?costMap():{};const costTotal=Object.values(cost).reduce((x,y)=>x+y,0);
+  const rail=`<details class="rail" id="rail" ${UI.railOpen?'open':''}><summary data-act="rail"><h2>Ассистенты</h2><span class="sub">· даты работы</span><span class="chev">›</span></summary>
+    <div class="list">${S.cfg.assistants.slice().sort(byName).map(a=>{
+      const av=S.avail[a.id]||{};const days=range(UI.from,UI.to).filter(d=>av[d]).length;
+      return`<button class="ra" data-act="avail" data-a="${a.id}"><span class="nm">${esc(a.name)}</span><span class="meta num">${days?`${days} дн. может`:'<span class="z">даты не отмечены</span>'}<br>${load[a.id]||0} смен назначено${st.rates&&cost[a.id]?' · '+rub(cost[a.id]):''}</span></button>`}).join('')||`<div class="foot">Ассистентов пока нет — добавьте их в разделе «Ассистенты».</div>`}</div>
+    <div class="foot">Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
+  return`${exampleBanner()}${schedHead()}
+  <div class="toolbar">
+    <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
+      <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
+      <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>
+    <span class="spacer"></span>
+    <button class="btn" data-act="open-gen">Сформировать</button>
+    <button class="btn primary" data-act="open-auto">Автозаполнение</button>
+    <button class="btn" data-act="export">Скачать / печать</button>
+    <button class="btn ghost" data-act="copy" title="Скопировать таблицу для Excel">Копировать</button>
+  </div>
+  ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
+    <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
+  <div class="sched"><div class="boardwrap">${board}</div>${rail}</div>`;
+}
+function viewWeek(){
+  const cls=S.cfg.clinics;
+  if(!UI.clinic||!clById(UI.clinic))UI.clinic=cls[0]?.id||null;
+  const cl=clById(UI.clinic);
+  let body='';
+  if(!cl)body=`<div class="boardwrap"><div class="empty-board"><h2>Добавьте первую клинику</h2><p>Укажите название и количество кресел — потом расставите врачей по дням недели.</p><button class="btn primary" data-act="clinic-add">Добавить клинику</button></div></div>`;
+  else{
+    let t=`<table class="tpl"><thead><tr><th class="lab" style="position:sticky;left:0;background:var(--surface)">Кресло</th>${WD.map((w,i)=>`<th style="${i>4?'color:var(--bad)':''}">${w}</th>`).join('')}</tr></thead><tbody>`;
+    for(let ch=0;ch<cl.chairs;ch++){
+      t+=`<tr><th class="lab" style="position:sticky;left:0;background:var(--surface);padding:8px 10px;font-size:12px;color:var(--muted);text-align:left">Кресло ${ch+1}</th>`;
+      for(let w=0;w<7;w++){
+        const arr=cl.template[ch+'-'+w]||[];
+        t+=`<td class="c"><button class="tcell" data-act="tpl" data-ch="${ch}" data-w="${w}">${arr.length?arr.map(e=>`<span class="e">${shChip(e.shift)}<span>${esc(docName(e.doctorId))}</span></span>`).join(''):'<span class="plus">+ врач</span>'}</button></td>`;
+      }
+      t+=`</tr>`;
+    }
+    t+=`</tbody></table>`;
+    body=`<div class="row">
+      <label class="f">Название клиники<input type="text" id="clName" value="${esc(cl.name)}"></label>
+      <div class="f" style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:600">Кресел
+        <div class="row" style="gap:6px"><button class="btn sm" data-act="chairs" data-v="-1" aria-label="Меньше кресел">−</button><b class="num" style="font-size:16px;min-width:20px;text-align:center;color:var(--ink)">${cl.chairs}</b><button class="btn sm" data-act="chairs" data-v="1" aria-label="Больше кресел">+</button></div></div>
+      <span class="spacer"></span><button class="btn sm danger" data-act="clinic-del" id="cldel">Удалить клинику</button></div>
+      <p class="sub">Нажмите на ячейку, чтобы поставить врача. В одно кресло можно поставить двух врачей: утро и вечер.</p>
+      <div class="boardwrap">${t}</div>`;
+  }
+  return`${schedHead()}
+  <div class="row">${cls.map(c=>`<button class="btn ${c.id===UI.clinic?'primary':''}" data-act="clinic-sel" data-v="${c.id}">${esc(c.name)}</button>`).join('')}<button class="btn ghost" data-act="clinic-add">+ клиника</button></div>
+  ${body}`;
+}
+function viewDoctors(){
+  const ds=S.cfg.doctors.slice().sort(byName);
+  return`${exampleBanner()}<div class="row"><div><h1>Врачи</h1><p class="sub">Постоянные навыки врача подставляются в каждую его смену. Здесь же — приоритетные ассистенты и кого не ставить.</p></div><span class="spacer"></span><button class="btn" data-act="tags">Навыки</button></div>
+  <form class="addbar" id="addDoc"><input type="text" id="newDoc" placeholder="Фамилия И.О. врача" autocomplete="off"><button class="btn primary">Добавить врача</button></form>
+  <div class="cards">${ds.map(d=>`<button class="card" data-act="doc" data-v="${d.id}">
+    <span class="t">${esc(d.name)}${d.example?'<span class="ex">пример</span>':''}</span>
+    ${d.spec?`<span class="k">${esc(d.spec)}</span>`:''}
+    <span class="tags">${d.tags.map(t=>tagById(t)).filter(Boolean).map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')||'<span class="k">навыки не указаны</span>'}</span>
+    ${d.prio.length?`<span class="k">Приоритет: <b>${d.prio.map(id=>esc(asById(id)?.name||'')).filter(Boolean).join(', ')}</b></span>`:''}
+    ${d.block.length?`<span class="k">Не ставить: <b>${d.block.map(id=>esc(asById(id)?.name||'')).filter(Boolean).join(', ')}</b></span>`:''}
+  </button>`).join('')||'<p class="sub">Врачей пока нет.</p>'}</div>`;
+}
+function viewAssistants(){
+  const as=S.cfg.assistants.slice().sort(byName);
+  return`${exampleBanner()}<div class="row"><div><h1>Ассистенты</h1><p class="sub">Отметьте навыки — по ним программа подбирает ассистента к смене врача.</p></div><span class="spacer"></span><button class="btn" data-act="tags">Навыки</button></div>
+  <form class="addbar" id="addAs"><input type="text" id="newAs" placeholder="Фамилия И.О. ассистента" autocomplete="off"><button class="btn primary">Добавить ассистента</button></form>
+  <div class="cards">${as.map(a=>{const pr=S.cfg.doctors.filter(d=>d.prio.includes(a.id));const bl=S.cfg.doctors.filter(d=>d.block.includes(a.id));const nd=Object.keys(S.avail[a.id]||{}).filter(d=>d>=TODAY).length;
+    return`<button class="card" data-act="as" data-v="${a.id}">
+    <span class="t">${esc(a.name)}${a.example?'<span class="ex">пример</span>':''}</span>
+    <span class="tags">${a.tags.map(t=>tagById(t)).filter(Boolean).map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')||'<span class="k">навыки не указаны</span>'}</span>
+    ${pr.length?`<span class="k">Приоритетный для: <b>${pr.map(d=>esc(d.name)).join(', ')}</b></span>`:''}
+    ${bl.length?`<span class="k">Не ставить к: <b>${bl.map(d=>esc(d.name)).join(', ')}</b></span>`:''}
+    ${SET().rates?`<span class="k">Ставка: <b class="num">${num(a.rate)!=null?rub(num(a.rate))+' / день':'не указана'}</b></span>`:''}
+    <span class="k">Отмечено дат работы с сегодня: <b class="num">${nd}</b></span>
+  </button>`}).join('')||'<p class="sub">Ассистентов пока нет.</p>'}</div>`;
+}
+
+/* ---------- modal ---------- */
+const M={open:false,fn:null,wide:false,
+  show(fn,wide){this.fn=fn;this.wide=!!wide;this.open=true;this.refresh(true)},
+  refresh(first){if(!this.open)return;const c=this.fn();const root=$('#modalRoot');
+    const sc=root.querySelector('.mback')?.scrollTop||0;
+    root.innerHTML=`<div class="mback" data-act="mback"><div class="modal ${this.wide?'wide':''}" role="dialog" aria-modal="true"><div class="mh"><div class="ttl">${c.title}</div><button class="x" data-act="close" aria-label="Закрыть">×</button></div><div class="mb">${c.body}</div>${c.foot?`<div class="mf">${c.foot}</div>`:''}</div></div>`;
+    if(!first)root.querySelector('.mback').scrollTop=sc;
+    c.bind&&c.bind(root);
+  },
+  close(){this.open=false;this.fn=null;$('#modalRoot').innerHTML='';render()}
+};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&M.open)M.close()});
+function toast(t){const r=$('#toastRoot');r.innerHTML=`<div class="toast" role="status">${esc(t)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',3600)}
+
+function tagPicker(sel,key){
+  return`<div class="pick-tags tags">${S.cfg.tags.slice().sort(byName).map(t=>`<button type="button" class="tag" data-act="tg" data-k="${key}" data-v="${t.id}" aria-pressed="${sel.includes(t.id)}">${esc(t.name)}</button>`).join('')||'<span class="sub">Навыков пока нет — создайте первый.</span>'}</div>
+  <div class="row" style="gap:6px"><input type="text" id="newTag-${key}" placeholder="Новый навык, например «Имплантация»" style="flex:1"><button type="button" class="btn sm" data-act="tg-new" data-k="${key}">Создать</button></div>`;
+}
+let TG={}; // key -> {get:()=>arr, set:(arr)=>void}
+function newTag(name){name=name.trim();if(!name)return null;let t=S.cfg.tags.find(x=>x.name.toLowerCase()===name.toLowerCase());if(!t){t={id:uid(),name};S.cfg.tags.push(t);markCfg()}return t}
+
+/* ---------- modals: entries ---------- */
+function openPicker(date,eid){
+  M.show(()=>{
+    const f=findEntry(date,eid);if(!f)return{title:'Смена удалена',body:''};
+    const{en,cl}=f;const load=loadMap();
+    const cs=classify(date,en,busyMap(date,en.id),load);
+    const groups=[['prio','Приоритет'],['can','Могут в эту смену'],['no','Не могут'],['never','Точно не ставить']];
+    const body=groups.map(([g,l])=>{const arr=sortCands(cs.filter(c=>c.group===g));
+      return`<div class="grp ${g}"><h3>${l}<span class="n num">${arr.length}</span></h3>${arr.map(c=>{
+        const why=[c.reason,c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
+        return`<button class="cand ${en.assistantId===c.a.id?'cur':''}" data-act="assign" data-d="${date}" data-e="${eid}" data-a="${c.a.id}">
+          <span><span class="nm">${esc(c.a.name)}</span>${why?`<br><span class="why">${esc(why)}</span>`:''}</span>
+          <span class="r num">${c.av?SH[c.av].l:''}<br>${c.load} смен${SET().rates&&num(c.a.rate)!=null?' · '+rub(shiftCost(c.a,en.shift)):''}</span></button>`}).join('')||'<div class="list-empty">—</div>'}</div>`}).join('');
+    const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
+    return{title:`<h2>${esc(docName(en.doctorId))}</h2><p class="sub">${esc(cl.name)} · ${fmtL(date)} · ${SH[en.shift].l}${tg.length?' · нужно: '+tg.map(t=>esc(t.name)).join(', '):''}</p>`,
+      body,foot:en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать ассистента</button>`:''};
+  });
+}
+function openEntryEdit(date,eid,newAt){
+  // newAt: {cid,ch} для новой смены
+  let draft;
+  if(newAt){draft={id:uid(),doctorId:'',shift:'day',tags:[],assistantId:null}}
+  else{const f=findEntry(date,eid);if(!f)return;draft=clone(f.en)}
+  const ctx=newAt?{cl:clById(newAt.cid),ch:newAt.ch}:(()=>{const f=findEntry(date,eid);return{cl:f.cl,ch:f.ch}})();
+  TG={ent:{get:()=>draft.tags,set:a=>draft.tags=a}};
+  M.show(()=>{
+    const ds=S.cfg.doctors.slice().sort(byName);
+    return{title:`<h2>${newAt?'Новая смена врача':'Смена врача'}</h2><p class="sub">${esc(ctx.cl.name)} · кресло ${ctx.ch+1} · ${fmtL(date)}</p>`,
+    body:`<label class="f">Врач<select id="edDoc"><option value="">— выберите —</option>${ds.map(d=>`<option value="${d.id}" ${d.id===draft.doctorId?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
+      <div class="f" style="font-size:12px;color:var(--muted);font-weight:600;display:flex;flex-direction:column;gap:5px">Режим<div class="seg">${Object.keys(SH).map(k=>`<button type="button" data-act="ed-sh" data-v="${k}" aria-pressed="${draft.shift===k}">${SH[k].l}</button>`).join('')}</div></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Задачи на этот день</h3><p class="sub" style="margin:0 0 8px">Подставлены навыки врача. Добавьте, например, «Имплантация», если она запланирована именно сегодня — ассистент подберётся под неё.</p>${tagPicker(draft.tags,'ent')}</div>`,
+    foot:`${newAt?'':`<button class="btn danger" data-act="ed-del" id="eddel">Удалить смену</button><span class="spacer"></span>`}<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="ed-save">Сохранить</button>`,
+    bind:r=>{r.querySelector('#edDoc').onchange=e=>{const d=docById(e.target.value);const old=docById(draft.doctorId);
+      if(d){draft.tags=[...new Set([...draft.tags.filter(t=>!(old&&old.tags.includes(t))),...d.tags])]}
+      draft.doctorId=e.target.value;M.refresh()}}};
+  });
+  ACT['ed-sh']=b=>{draft.shift=b.dataset.v;M.refresh()};
+  ACT['ed-save']=()=>{
+    if(!draft.doctorId){toast('Выберите врача');return}
+    if(newAt){const arr=cellArr(date,newAt.cid,newAt.ch,true);
+      if(arr.some(e=>overlap(e.shift,draft.shift))){toast('В это кресло уже есть врач на это время');return}
+      arr.push(draft)}
+    else{const f=findEntry(date,eid);const arr=cellArr(date,f.cl.id,f.ch,false);
+      if(arr.some(e=>e.id!==eid&&overlap(e.shift,draft.shift))){toast('Время пересекается с другим врачом в этом кресле');return}
+      Object.assign(f.en,draft)}
+    MISS.delete(draft.id);markMonth(ymOf(date));M.close();
+  };
+  ACT['ed-del']=b=>{if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='Точно удалить?';return}
+    const f=findEntry(date,eid);const arr=cellArr(date,f.cl.id,f.ch,false);arr.splice(arr.findIndex(e=>e.id===eid),1);markMonth(ymOf(date));M.close()};
+}
+
+/* ---------- modals: template cell ---------- */
+function openTpl(ch,w){
+  const cl=clById(UI.clinic);let arr=clone(cl.template[ch+'-'+w]||[]);
+  M.show(()=>{const ds=S.cfg.doctors.slice().sort(byName);
+    return{title:`<h2>${esc(cl.name)} · кресло ${ch+1}</h2><p class="sub">${['Каждый понедельник','Каждый вторник','Каждую среду','Каждый четверг','Каждую пятницу','Каждую субботу','Каждое воскресенье'][w]}</p>`,
+    body:(arr.map((e,i)=>`<div class="row" style="align-items:flex-end"><label class="f" style="flex:1;min-width:180px">Врач<select data-i="${i}" class="tdoc"><option value="">— выберите —</option>${ds.map(d=>`<option value="${d.id}" ${d.id===e.doctorId?'selected':''}>${esc(d.name)}</option>`).join('')}</select></label>
+      <div class="seg">${Object.keys(SH).map(k=>`<button type="button" data-act="t-sh" data-i="${i}" data-v="${k}" aria-pressed="${e.shift===k}">${SH[k].l}</button>`).join('')}</div>
+      <button class="btn sm ghost" data-act="t-rm" data-i="${i}">Убрать</button></div>`).join('')||'<p class="sub">Врача на этот день нет.</p>')+
+      (ds.length?'':'<p class="sub">Сначала добавьте врачей в разделе «Врачи».</p>')+
+      (arr.length<2&&!arr.some(e=>e.shift==='day')?`<div><button class="btn sm" data-act="t-add">+ ${arr.length?'второй врач (утро/вечер)':'поставить врача'}</button></div>`:''),
+    foot:`<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="t-save">Сохранить</button>`,
+    bind:r=>r.querySelectorAll('.tdoc').forEach(s=>s.onchange=e=>{arr[+s.dataset.i].doctorId=e.target.value})};
+  });
+  ACT['t-add']=()=>{const used=arr[0]?.shift;arr.push({doctorId:'',shift:used==='am'?'pm':used==='pm'?'am':'day'});M.refresh()};
+  ACT['t-rm']=b=>{arr.splice(+b.dataset.i,1);M.refresh()};
+  ACT['t-sh']=b=>{arr[+b.dataset.i].shift=b.dataset.v;M.refresh()};
+  ACT['t-save']=()=>{const clean=arr.filter(e=>e.doctorId);
+    if(clean.length===2&&overlap(clean[0].shift,clean[1].shift)){toast('Два врача в одном кресле — только утро + вечер');return}
+    if(clean.length)cl.template[ch+'-'+w]=clean;else delete cl.template[ch+'-'+w];markCfg();M.close()};
+}
+
+/* ---------- modals: doctor / assistant ---------- */
+function armed(b,text){if(!b.classList.contains('armed')){b.classList.add('armed');b.dataset.orig=b.textContent;b.textContent=text||'Точно удалить?';return false}return true}
+function openDoc(id){
+  const d=docById(id);if(!d)return;
+  TG={doc:{get:()=>d.tags,set:a=>{d.tags=a;markCfg()}}};
+  M.show(()=>{const as=S.cfg.assistants.slice().sort(byName);
+    return{title:`<h2>Карточка врача</h2>`,
+    body:`<div class="row"><label class="f" style="flex:2;min-width:200px">Фамилия И.О.<input type="text" id="dName" value="${esc(d.name)}"></label><label class="f" style="flex:1;min-width:150px">Специализация<input type="text" id="dSpec" value="${esc(d.spec||'')}" placeholder="Хирург"></label></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Постоянные навыки</h3>${tagPicker(d.tags,'doc')}</div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Приоритетные ассистенты</h3><div class="pick-tags tags">${as.map(a=>`<button type="button" class="tag" data-act="d-prio" data-v="${a.id}" aria-pressed="${d.prio.includes(a.id)}">${esc(a.name)}</button>`).join('')||'<span class="sub">Ассистентов пока нет</span>'}</div></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Не ставить с ассистентами</h3><div class="pick-tags tags">${as.map(a=>`<button type="button" class="tag neg" data-act="d-block" data-v="${a.id}" aria-pressed="${d.block.includes(a.id)}">${esc(a.name)}</button>`).join('')}</div></div>`,
+    foot:`<button class="btn danger" data-act="d-del">Удалить врача</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`,
+    bind:r=>{r.querySelector('#dName').oninput=e=>{d.name=e.target.value;delete d.example;markCfg()};r.querySelector('#dSpec').oninput=e=>{d.spec=e.target.value;markCfg()}}};
+  });
+  ACT['d-prio']=b=>{const v=b.dataset.v;d.prio=d.prio.includes(v)?d.prio.filter(x=>x!==v):[...d.prio,v];d.block=d.block.filter(x=>x!==v);markCfg();M.refresh()};
+  ACT['d-block']=b=>{const v=b.dataset.v;d.block=d.block.includes(v)?d.block.filter(x=>x!==v):[...d.block,v];d.prio=d.prio.filter(x=>x!==v);markCfg();M.refresh()};
+  ACT['d-del']=b=>{if(!armed(b,'Точно удалить? Он пропадёт и из базовой недели'))return;removeDoctors([d.id]);M.close()};
+}
+function openAs(id){
+  const a=asById(id);if(!a)return;
+  TG={as:{get:()=>a.tags,set:x=>{a.tags=x;markCfg()}}};
+  M.show(()=>({title:`<h2>Карточка ассистента</h2>`,
+    body:`<div class="row"><label class="f" style="flex:2;min-width:200px">Фамилия И.О.<input type="text" id="aName" value="${esc(a.name)}"></label><label class="f" style="flex:1;min-width:150px">Телефон<input type="tel" id="aPhone" value="${esc(a.phone||'')}"></label></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Навыки</h3>${tagPicker(a.tags,'as')}</div>
+      ${SET().rates?`<div class="row"><label class="f" style="flex:1;min-width:140px">Ставка за весь день, ₽<input type="text" inputmode="decimal" id="aRate" value="${esc(a.rate??'')}" placeholder="3000"></label><label class="f" style="flex:1;min-width:140px">За утро или вечер, ₽<input type="text" inputmode="decimal" id="aRateHalf" value="${esc(a.rateHalf??'')}" placeholder="${num(a.rate)!=null?'по умолчанию '+Math.round(num(a.rate)/2):'половина дневной'}"></label></div>`:''}
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Приоритетный ассистент у врачей</h3><div class="pick-tags tags">${S.cfg.doctors.slice().sort(byName).map(d=>`<button type="button" class="tag" data-act="a-prio" data-v="${d.id}" aria-pressed="${d.prio.includes(a.id)}">${esc(d.name)}</button>`).join('')||'<span class="sub">Врачей пока нет</span>'}</div></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Не ставить к врачам</h3><div class="pick-tags tags">${S.cfg.doctors.slice().sort(byName).map(d=>`<button type="button" class="tag neg" data-act="a-block" data-v="${d.id}" aria-pressed="${d.block.includes(a.id)}">${esc(d.name)}</button>`).join('')}</div></div>
+      <label class="f">Заметка<textarea id="aNote" rows="2" placeholder="Например: не работает по субботам">${esc(a.note||'')}</textarea></label>`,
+    foot:`<button class="btn danger" data-act="a-del">Удалить ассистента</button><span class="spacer"></span><button class="btn" data-act="avail" data-a="${a.id}">Даты работы</button><button class="btn primary" data-act="close">Готово</button>`,
+    bind:r=>{r.querySelector('#aName').oninput=e=>{a.name=e.target.value;delete a.example;markCfg()};r.querySelector('#aPhone').oninput=e=>{a.phone=e.target.value;markCfg()};r.querySelector('#aNote').oninput=e=>{a.note=e.target.value;markCfg()};
+      const rr=r.querySelector('#aRate');if(rr)rr.oninput=e=>{a.rate=e.target.value.trim();markCfg();const h=r.querySelector('#aRateHalf');if(h)h.placeholder=num(a.rate)!=null?'по умолчанию '+Math.round(num(a.rate)/2):'половина дневной'};
+      const rh=r.querySelector('#aRateHalf');if(rh)rh.oninput=e=>{a.rateHalf=e.target.value.trim();markCfg()}}}));
+  ACT['a-prio']=b=>{const d=docById(b.dataset.v);if(!d)return;d.prio=d.prio.includes(a.id)?d.prio.filter(x=>x!==a.id):[...d.prio,a.id];d.block=d.block.filter(x=>x!==a.id);markCfg();M.refresh()};
+  ACT['a-block']=b=>{const d=docById(b.dataset.v);if(!d)return;d.block=d.block.includes(a.id)?d.block.filter(x=>x!==a.id):[...d.block,a.id];d.prio=d.prio.filter(x=>x!==a.id);markCfg();M.refresh()};
+  ACT['a-del']=b=>{if(!armed(b,'Точно удалить? Он снимется со всех смен'))return;removeAssistants([a.id]);M.close()};
+}
+function removeDoctors(ids){
+  S.cfg.doctors=S.cfg.doctors.filter(d=>!ids.includes(d.id));
+  S.cfg.clinics.forEach(c=>Object.keys(c.template).forEach(k=>{c.template[k]=c.template[k].filter(e=>!ids.includes(e.doctorId));if(!c.template[k].length)delete c.template[k]}));
+  markCfg();
+  Object.keys(S.months).forEach(ym=>{let ch=false;const m=S.months[ym];Object.values(m).forEach(day=>Object.values(day).forEach(cl=>Object.keys(cl).forEach(k=>{const n=cl[k].filter(e=>!ids.includes(e.doctorId));if(n.length!==cl[k].length){cl[k]=n;ch=true}})));if(ch)markMonth(ym)});
+}
+function removeAssistants(ids){
+  S.cfg.assistants=S.cfg.assistants.filter(a=>!ids.includes(a.id));
+  S.cfg.doctors.forEach(d=>{d.prio=d.prio.filter(x=>!ids.includes(x));d.block=d.block.filter(x=>!ids.includes(x))});markCfg();
+  ids.forEach(id=>{if(S.avail[id]){delete S.avail[id];markAvail(id)}});
+  Object.keys(S.months).forEach(ym=>{let ch=false;Object.values(S.months[ym]).forEach(day=>Object.values(day).forEach(cl=>Object.values(cl).forEach(arr=>arr.forEach(e=>{if(ids.includes(e.assistantId)){e.assistantId=null;ch=true}}))));if(ch)markMonth(ym)});
+}
+function openTags(){
+  M.show(()=>({title:`<h2>Навыки</h2><p class="sub">Общий справочник для врачей, ассистентов и смен.</p>`,
+    body:(S.cfg.tags.slice().sort(byName).map(t=>{const n=S.cfg.assistants.filter(a=>a.tags.includes(t.id)).length;
+      return`<div class="row"><input type="text" class="tgname" data-v="${t.id}" value="${esc(t.name)}" style="flex:1" aria-label="Название навыка"><span class="sub num">${n} асс.</span><button class="btn sm danger" data-act="tg-del" data-v="${t.id}">Удалить</button></div>`}).join('')||'<p class="sub">Навыков пока нет.</p>')+
+      `<div class="row" style="gap:6px"><input type="text" id="newTag-lib" placeholder="Новый навык" style="flex:1"><button class="btn sm" data-act="tg-new" data-k="lib">Создать</button></div>`,
+    foot:`<button class="btn primary" data-act="close">Готово</button>`,
+    bind:r=>r.querySelectorAll('.tgname').forEach(i=>i.oninput=e=>{const t=tagById(i.dataset.v);if(t){t.name=e.target.value;markCfg()}})}));
+}
+
+/* ---------- availability ---------- */
+let AV={month:null,brush:'day'};
+function openAvail(aid){
+  const a=asById(aid);if(!a)return;
+  AV.month=AV.month||ymOf(UI.from);
+  M.show(()=>{
+    const av=S.avail[aid]||{};const[y,m]=AV.month.split('-').map(Number);
+    const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const off=(first.getDay()+6)%7;
+    let cal=WD.map((w,i)=>`<button class="wh" data-act="av-wd" data-v="${i}" title="Отметить все ${w} месяца">${w}</button>`).join('');
+    for(let i=0;i<off;i++)cal+=`<span class="dd out"></span>`;
+    let cnt=0;
+    for(let d=1;d<=days;d++){const ds=iso(new Date(y,m-1,d));const v=av[ds];if(v)cnt++;
+      const inP=ds>=UI.from&&ds<=UI.to;
+      cal+=`<button class="dd ${v||''} ${inP?'inp':''}" data-act="av-day" data-v="${ds}" aria-label="${ds} ${v?SH[v].l:'нет'}">${d}${v?`<small>${SH[v].s}</small>`:''}</button>`}
+    return{title:`<h2>${esc(a.name)}</h2><p class="sub">Когда может выйти на работу. Выберите режим и нажимайте на дни.</p>`,
+      body:`<div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div>
+      <div class="mnav"><button class="btn sm" data-act="av-m" data-v="-1" aria-label="Предыдущий месяц">‹</button><b>${MN[m-1]} ${y}</b><button class="btn sm" data-act="av-m" data-v="1" aria-label="Следующий месяц">›</button><span class="spacer"></span><span class="sub num">${cnt} дн.</span></div>
+      <div class="cal">${cal}</div>
+      <p class="sub" style="margin:0">Нажмите на день недели в шапке — режим применится ко всем таким дням месяца. Обведены дни текущего периода графика.</p>`,
+      foot:`<button class="btn sm danger" data-act="av-clear">Очистить месяц</button><span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`};
+  });
+  const setD=(ds,v)=>{S.avail[aid]=S.avail[aid]||{};if(v==='none')delete S.avail[aid][ds];else S.avail[aid][ds]=v};
+  const monthDays=()=>{const[y,m]=AV.month.split('-').map(Number);const n=new Date(y,m,0).getDate();return Array.from({length:n},(_,i)=>iso(new Date(y,m-1,i+1)))};
+  ACT['av-brush']=b=>{AV.brush=b.dataset.v;M.refresh()};
+  ACT['av-day']=b=>{const ds=b.dataset.v;const cur=(S.avail[aid]||{})[ds];setD(ds,cur===AV.brush?'none':AV.brush);markAvail(aid);M.refresh()};
+  ACT['av-wd']=b=>{const w=+b.dataset.v;monthDays().filter(d=>wdOf(d)===w).forEach(d=>setD(d,AV.brush));markAvail(aid);M.refresh()};
+  ACT['av-m']=b=>{const[y,m]=AV.month.split('-').map(Number);const d=new Date(y,m-1+(+b.dataset.v),1);AV.month=iso(d).slice(0,7);M.refresh()};
+  ACT['av-clear']=b=>{if(!armed(b,'Очистить весь месяц?'))return;monthDays().forEach(d=>setD(d,'none'));markAvail(aid);M.refresh()};
+}
+
+/* ---------- generate ---------- */
+function openGen(){
+  let sel=S.cfg.clinics.map(c=>c.id),over=false;
+  M.show(()=>{
+    const ds=range(UI.from,UI.to);
+    const existing=ds.filter(d=>sel.some(c=>(dayObj(d,false)||{})[c])).length;
+    const emptyTpl=S.cfg.clinics.filter(c=>sel.includes(c.id)&&!Object.keys(c.template).length);
+    return{title:`<h2>Сформировать расписание</h2><p class="sub">Врачи подтянутся из базовой недели каждой клиники.</p>`,
+    body:`<div class="row"><label class="f">С<input type="date" id="gFrom" value="${UI.from}"></label><label class="f">По<input type="date" id="gTo" value="${UI.to}"></label></div>
+      <div><h3 style="margin:0 0 6px;font-size:12px;color:var(--muted)">Клиники</h3>${S.cfg.clinics.map(c=>`<label class="chk"><input type="checkbox" class="gcl" value="${c.id}" ${sel.includes(c.id)?'checked':''}> ${esc(c.name)} <span class="sub">· ${c.chairs} кр.</span></label>`).join('')||'<p class="sub">Сначала добавьте клинику.</p>'}</div>
+      ${emptyTpl.length?`<div class="note">Пустая базовая неделя: ${emptyTpl.map(c=>esc(c.name)).join(', ')}. Для неё врачей не будет.</div>`:''}
+      ${existing?`<div class="note info">На ${existing} дн. этого периода расписание уже есть.<label class="chk" style="width:100%"><input type="checkbox" id="gOver" ${over?'checked':''}> Сформировать эти дни заново (ручные правки и ассистенты в них пропадут)</label></div>`:''}`,
+    foot:`<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="gen-run">Сформировать</button>`,
+    bind:r=>{r.querySelectorAll('.gcl').forEach(c=>c.onchange=()=>{sel=[...r.querySelectorAll('.gcl:checked')].map(x=>x.value);M.refresh()});
+      const o=r.querySelector('#gOver');if(o)o.onchange=()=>over=o.checked;
+      r.querySelector('#gFrom').onchange=e=>{if(e.target.value){UI.from=e.target.value;if(UI.to<UI.from)UI.to=UI.from;saveUI();M.refresh()}};
+      r.querySelector('#gTo').onchange=e=>{if(e.target.value&&e.target.value>=UI.from){UI.to=e.target.value;saveUI();M.refresh()}}}};
+  },false);
+  ACT['gen-run']=()=>{
+    if(!sel.length){toast('Выберите хотя бы одну клинику');return}
+    const ds=range(UI.from,UI.to);if(ds.length>=190){toast('Слишком длинный период — не больше полугода');return}
+    let made=0,skipped=0;const yms=new Set();
+    ds.forEach(d=>{const w=wdOf(d);sel.forEach(cid=>{const cl=clById(cid);const day=dayObj(d,false);
+      if(day&&day[cid]&&!over){skipped++;return}
+      const nd=dayObj(d,true);nd[cid]={};
+      for(let ch=0;ch<cl.chairs;ch++){const t=(cl.template[ch+'-'+w]||[]).filter(e=>docById(e.doctorId));
+        if(t.length)nd[cid][ch]=t.map(e=>({id:uid(),doctorId:e.doctorId,shift:e.shift,tags:[...docById(e.doctorId).tags],assistantId:null}))}
+      made++;yms.add(ymOf(d))})});
+    yms.forEach(markMonth);MISS.clear();M.close();
+    toast(`Готово: ${made} клинико-дней${skipped?`, пропущено уже заполненных: ${skipped}`:''}`);
+  };
+}
+
+/* ---------- autofill ---------- */
+function openAuto(){
+  let over=false,allowMiss=false;
+  M.show(()=>{
+    const ds=range(UI.from,UI.to);const w=[];let total=0,empty=0;
+    ds.forEach(d=>forEntries(d,en=>{total++;if(!en.assistantId)empty++}));
+    if(!total)w.push('В этом периоде нет смен врачей — сначала нажмите «Сформировать».');
+    if(!S.cfg.assistants.length)w.push('Не добавлено ни одного ассистента.');
+    const noAv=S.cfg.assistants.filter(a=>!ds.some(d=>(S.avail[a.id]||{})[d]));
+    if(noAv.length)w.push(`Не отмечены даты работы: ${noAv.map(a=>esc(a.name)).join(', ')}. Их программа не поставит.`);
+    const noSkill=S.cfg.assistants.filter(a=>!a.tags.length);
+    if(noSkill.length)w.push(`Без навыков: ${noSkill.map(a=>esc(a.name)).join(', ')}.`);
+    const need=new Set();ds.forEach(d=>forEntries(d,en=>(en.tags||[]).forEach(t=>need.add(t))));
+    const orphan=[...need].filter(t=>tagById(t)&&!S.cfg.assistants.some(a=>a.tags.includes(t)));
+    if(orphan.length)w.push(`Ни у одного ассистента нет навыка: ${orphan.map(t=>esc(tagById(t).name)).join(', ')}.`);
+    return{title:`<h2>Автозаполнение</h2><p class="sub">${fmt(UI.from)}–${fmt(UI.to)} · пустых слотов: ${empty} из ${total}</p>`,
+    body:(w.length?`<div><h3 style="margin:0 0 6px;font-size:12px;color:var(--warn)">Проверьте перед запуском</h3><ul class="warnlist">${w.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:`<p class="okline">Всё настроено, можно заполнять.</p>`)+
+      `<div><label class="chk"><input type="checkbox" id="aOver" ${over?'checked':''}> Перераспределить и уже назначенных ассистентов</label>
+      <label class="chk"><input type="checkbox" id="aMiss" ${allowMiss?'checked':''}> Если нет ассистента с нужным навыком — ставить без него (отметится жёлтым)</label></div>
+      <p class="sub" style="margin:0">Порядок подбора: приоритетный ассистент врача → совпадение навыков → у кого меньше смен в периоде${SET().rates&&SET().cheap?' → из равных — с меньшей ставкой':''}. Слоты, для которых никого не нашлось, подсветятся красным.</p>`,
+    foot:`<button class="btn" data-act="close">Отмена</button><button class="btn primary" data-act="auto-run" ${total?'':'disabled'}>${w.length?'Всё равно заполнить':'Заполнить'}</button>`,
+    bind:r=>{r.querySelector('#aOver').onchange=e=>over=e.target.checked;r.querySelector('#aMiss').onchange=e=>allowMiss=e.target.checked}};
+  });
+  ACT['auto-run']=()=>{const res=autofill({overwrite:over,allowMissing:allowMiss});M.close();
+    toast(`Назначено: ${res.filled}. ${res.left?`Не нашлось ассистента для ${res.left} — они подсвечены.`:'Все слоты заполнены.'}`)};
+}
+function autofill(o){
+  const ds=range(UI.from,UI.to);const yms=new Set();MISS.clear();
+  if(o.overwrite)ds.forEach(d=>forEntries(d,en=>{if(en.assistantId){en.assistantId=null;yms.add(ymOf(d))}}));
+  const load=loadMap();let filled=0,left=0;
+  ds.forEach(d=>{
+    let open=[];forEntries(d,en=>{if(!en.assistantId)open.push(en)});
+    while(open.length){
+      const ev=open.map(en=>{const cs=classify(d,en,busyMap(d,en.id),load).filter(c=>(c.group==='prio'||c.group==='can')&&(o.allowMissing||!c.missing.length));return{en,cs}});
+      ev.sort((x,y)=>x.cs.length-y.cs.length);
+      const t=ev[0];
+      if(!t.cs.length){
+        const all=classify(d,t.en,busyMap(d,t.en.id),load);
+        const near=all.filter(c=>c.group==='prio'||c.group==='can');
+        MISS.set(t.en.id,near.length?'Свободны только без нужного навыка: '+near.map(c=>c.a.name).join(', '):'Нет свободных ассистентов на эту смену');
+        left++;open=open.filter(e=>e!==t.en);continue;
+      }
+      const sc=c=>(c.group==='prio'?100:0)+c.matched*6-c.missing.length*25-c.load*3+(c.av===t.en.shift?2:0);
+      const ranked=t.cs.slice().sort((x,y)=>sc(y)-sc(x)||byName(x.a,y.a));let best=ranked[0];
+      if(SET().rates&&SET().cheap){const top=sc(best);const eq=ranked.filter(c=>top-sc(c)<=3&&c.group===best.group&&c.missing.length===best.missing.length);
+        const pr=c=>num(c.a.rate)!=null?shiftCost(c.a,t.en.shift):Infinity;eq.sort((x,y)=>pr(x)-pr(y));if(pr(eq[0])<pr(best))best=eq[0]}
+      t.en.assistantId=best.a.id;load[best.a.id]=(load[best.a.id]||0)+1;filled++;yms.add(ymOf(d));
+      open=open.filter(e=>e!==t.en);
+    }
+  });
+  yms.forEach(markMonth);render();return{filled,left};
+}
+
+/* ---------- settings ---------- */
+function openSettings(){
+  BK=null;
+  M.show(()=>{const st=SET();const sw=(id,on,title,desc,dis)=>`<label class="opt ${dis?'dis':''}"><input type="checkbox" id="${id}" ${on?'checked':''} ${dis?'disabled':''}><span><b>${title}</b><br><span class="sub">${desc}</span></span></label>`;
+    return{title:`<h2>Настройки</h2>`,
+    body:`<div><h3 class="sh3">Вид графика</h3><p class="sub" style="margin:0 0 8px">Запоминается в этом браузере.</p>
+      <div class="seg"><button data-act="orient" data-v="h" aria-pressed="${UI.orient!=='v'}">Даты по горизонтали</button><button data-act="orient" data-v="v" aria-pressed="${UI.orient==='v'}">Даты по вертикали</button></div></div>
+      <div><h3 class="sh3">В ячейках графика</h3>${sw('sTags',st.showTags,'Показывать навыки смены','Метки вроде «Имплантация» под именем врача. Выключите для более компактной таблицы.')}</div>
+      <div><h3 class="sh3">Ставки ассистентов</h3>
+      ${sw('sRates',st.rates,'Учитывать ставки','В карточке ассистента появятся поля «за день» и «за утро/вечер», в графике — расходы за период.')}
+      ${sw('sCheap',st.cheap,'Из равных выбирать дешевле','Если при автозаполнении несколько ассистентов подходят одинаково, ставить того, у кого ставка ниже.',!st.rates)}</div>
+      <div><h3 class="sh3">Время смен в файлах</h3>
+      ${sw('sTimes',st.useTimes!==false,'Писать часы вместо «утро / вечер»','Например «Смирнов 9-14 2». Если выключить, будет «Смирнов утро 2».')}
+      <div class="row" id="timesRow">${['am','pm','day'].map(k=>`<label class="f" style="flex:1;min-width:100px">${SH[k].l}<input type="text" class="stime" data-k="${k}" value="${esc((st.times||{})[k]||'')}" ${st.useTimes===false?'disabled':''}></label>`).join('')}</div></div>
+      ${SUPA_ON&&AUTHED?`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вход выполнен</span><span class="spacer"></span><button class="btn sm" data-act="logout">Выйти</button></div></div>`:''}
+      <div><h3 class="sh3">Резервная копия</h3><p class="sub" style="margin:0 0 8px">Все врачи, ассистенты, даты и графики в одном файле. Так данные переносятся между онлайн- и офлайн-версией.</p>
+      <div class="row"><button class="btn" data-act="bk-save">Сохранить в файл</button><label class="btn" for="bkFile" style="cursor:pointer">Загрузить из файла</label><input type="file" id="bkFile" accept=".json,application/json" hidden></div>
+      ${BK?`<div class="note" style="margin-top:8px">Файл от ${esc(BK.when)}: врачей ${BK.data.cfg.doctors.length}, ассистентов ${BK.data.cfg.assistants.length}. Текущие данные будут заменены.<span class="spacer"></span><button class="btn sm" data-act="bk-cancel">Отмена</button><button class="btn sm danger" data-act="bk-apply">Заменить</button></div>`:''}</div>`,
+    foot:`<button class="btn primary" data-act="close">Готово</button>`,
+    bind:r=>{const fi=r.querySelector('#bkFile');if(fi)fi.onchange=e=>{const f=e.target.files[0];if(f)importBackup(f)};const set=(k,v)=>{S.cfg.settings=Object.assign({},SET(),{[k]:v});markCfg();M.refresh()};
+      r.querySelector('#sTags').onchange=e=>set('showTags',e.target.checked);
+      r.querySelector('#sRates').onchange=e=>set('rates',e.target.checked);
+      r.querySelector('#sCheap').onchange=e=>set('cheap',e.target.checked);
+      r.querySelector('#sTimes').onchange=e=>set('useTimes',e.target.checked);
+      r.querySelectorAll('.stime').forEach(i=>i.oninput=e=>{const st=SET();st.times=Object.assign({},st.times,{[i.dataset.k]:e.target.value.trim()});S.cfg.settings=st;markCfg()})}};
+  });
+}
+
+/* ---------- export ---------- */
+const EX={kind:'full',fmt:'pdf',cls:null,busy:false,img:null};
+const KIND={tpl:'Постоянный график',doc:'График врачей',full:'Врачи и ассистенты',asst:'График ассистентов'};
+const SHO={am:0,day:1,pm:2};
+const DAYF=['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+const fmtY=s=>fmt(s)+'.'+s.slice(0,4);
+const surname=n=>String(n||'').trim().split(/\s+/)[0]||'—';
+function shiftTime(s){const st=SET();if(st.useTimes===false)return s==='day'?'день':SH[s].l.toLowerCase();return(st.times||{})[s]||({am:'9-14',pm:'15-21',day:'9-21'})[s]}
+// сетка в формате «клиники столбцами, дни строками»
+function exGrid(kind,cids,dates){
+  const cls=cids.map(clById).filter(Boolean);
+  const ord=(x,y)=>SHO[x.shift]-SHO[y.shift]||x.chair-y.chair;
+  const period=fmtY(UI.from)+' – '+fmtY(UI.to);
+  if(kind==='tpl'){
+    return{heads:cls.map(c=>c.name),footer:'Постоянный график',title:'Постоянный график',blocks:DAYF.map((lab,w)=>({label:[lab],we:w>4,cols:cls.map(cl=>{const L=[];
+      for(let ch=0;ch<cl.chairs;ch++)(cl.template[ch+'-'+w]||[]).forEach(e=>{if(docById(e.doctorId))L.push({name:surname(docName(e.doctorId)),shift:e.shift,chair:ch+1})});
+      return{closed:!L.length,lines:L.sort(ord)}})}))};
+  }
+  if(kind==='asst'){
+    const used=new Set();dates.forEach(d=>forEntries(d,(en,cl)=>{if(cids.includes(cl.id)&&asById(en.assistantId))used.add(en.assistantId)}));
+    const as=[...used].map(asById).sort(byName);
+    const blocks=dates.map(d=>({d,label:[DAYF[wdOf(d)],fmt(d)],we:wdOf(d)>4,cols:as.map(a=>{const L=[];
+      forEntries(d,(en,cl,ch)=>{if(en.assistantId===a.id&&cids.includes(cl.id))L.push({name:surname(docName(en.doctorId)),shift:en.shift,chair:ch+1,sub:cl.name})});
+      return{closed:false,lines:L.sort(ord)}})})).filter(b=>b.cols.some(c=>c.lines.length));
+    return{heads:as.map(a=>a.name),blocks,title:KIND.asst+' · '+period,footer:KIND.asst};
+  }
+  const blocks=dates.map(d=>({d,label:[DAYF[wdOf(d)],fmt(d)],we:wdOf(d)>4,cols:cls.map(cl=>{const L=[];
+    for(let ch=0;ch<cl.chairs;ch++)cellArr(d,cl.id,ch,false).forEach(en=>{const a=asById(en.assistantId);const e={name:surname(docName(en.doctorId)),shift:en.shift,chair:ch+1};
+      if(kind==='full'){e.sub=a?'асс. '+surname(a.name):'нет ассистента';e.none=!a}L.push(e)});
+    return{closed:!L.length,lines:L.sort(ord)}})})).filter(b=>b.cols.some(c=>c.lines.length));
+  return{heads:cls.map(c=>c.name),blocks,title:KIND[kind]+' · '+period,footer:KIND[kind]};
+}
+const rowsOf=b=>Math.max(2,...b.cols.map(c=>c.lines.length));
+function exPageHTML(g,blocks){
+  const n=g.heads.length;
+  let h=`<div class="xp"><div class="xtop">${esc(g.title)}</div><table class="xg"><colgroup><col style="width:104px">${g.heads.map(()=>'<col>').join('')}</colgroup><thead><tr><th></th>${g.heads.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>`;
+  blocks.forEach((b,bi)=>{
+    h+=`<tr class="xband"><td colspan="${n+1}"></td></tr>`;
+    const R=rowsOf(b);
+    for(let i=0;i<R;i++){
+      h+=`<tr><td class="xday ${b.we?'we':''}">${b.label[i]?(i===0?`<b>${esc(b.label[i])}</b>`:esc(b.label[i])):''}</td>`;
+      b.cols.forEach(c=>{
+        if(c.closed){h+=`<td class="xcl">${i===0?'Клиника':i===1?'не работает':''}</td>`;return}
+        const e=c.lines[i];
+        h+=`<td>${e?`${esc(e.name)} ${esc(shiftTime(e.shift))} <b class="xch">${e.chair}</b>${e.sub?`<span class="xsub ${e.none?'xn':''}">${esc(e.sub)}</span>`:''}`:''}</td>`;
+      });
+      h+=`</tr>`;
+    }
+  });
+  return h+`</tbody></table><div class="xfoot">${esc(g.footer)}</div></div>`;
+}
+function weekChunks(blocks){const out=[];let cur=[];blocks.forEach(b=>{if(cur.length&&b.d&&(wdOf(b.d)===0||cur.length>=7)){out.push(cur);cur=[]}cur.push(b)});if(cur.length)out.push(cur);return out}
+const LIB={};
+function loadLib(src){return LIB[src]||(LIB[src]=new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>{delete LIB[src];rej(new Error('lib'))};document.head.appendChild(s)}))}
+const H2C='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+const JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+async function toCanvas(html){
+  await loadLib(H2C);
+  const host=document.createElement('div');host.style.cssText='position:absolute;left:-30000px;top:0;width:1123px';host.innerHTML=html;document.body.appendChild(host);
+  try{try{await document.fonts.load('400 13px "PT Serif"');await document.fonts.load('700 13px "PT Serif"');await document.fonts.ready}catch(e){}
+    const scale=host.offsetHeight*2>15000?1:2;
+    return await window.html2canvas(host,{scale,backgroundColor:'#FFFFFF',logging:false,windowWidth:1300})}
+  finally{host.remove()}
+}
+function xmlEsc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function docxXml(g){
+  const run=(t,o={})=>`<w:r><w:rPr>${o.b?'<w:b/><w:bCs/>':''}${o.i?'<w:i/><w:iCs/>':''}${o.c?`<w:color w:val="${o.c}"/>`:''}${o.sz?`<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>`:''}</w:rPr><w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r>`;
+  const p=(runs,o={})=>`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/>${o.jc?`<w:jc w:val="${o.jc}"/>`:''}</w:pPr>${runs||''}</w:p>`;
+  const n=g.heads.length,TW=15398,DW=1500,CW=Math.floor((TW-DW)/Math.max(1,n));
+  const tc=(content,w,fill,span)=>`<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${span?`<w:gridSpan w:val="${span}"/>`:''}${fill?`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`:''}</w:tcPr>${content||p('')}</w:tc>`;
+  let b=p(run(g.title,{b:1,sz:22}))+p('');
+  b+=`<w:tbl><w:tblPr><w:tblW w:w="${TW}" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>${['top','left','bottom','right','insideH','insideV'].map(x=>`<w:${x} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('')}</w:tblBorders><w:tblCellMar><w:top w:w="10" w:type="dxa"/><w:left w:w="70" w:type="dxa"/><w:bottom w:w="10" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tblCellMar></w:tblPr>`;
+  b+=`<w:tblGrid><w:gridCol w:w="${DW}"/>${g.heads.map(()=>`<w:gridCol w:w="${CW}"/>`).join('')}</w:tblGrid>`;
+  b+=`<w:tr><w:trPr><w:tblHeader/></w:trPr>${tc(p(''),DW)}${g.heads.map(x=>tc(p(run(x,{b:1,i:1}),{jc:'center'}),CW)).join('')}</w:tr>`;
+  g.blocks.forEach(bl=>{
+    b+=`<w:tr><w:trPr><w:trHeight w:val="150" w:hRule="exact"/></w:trPr>${tc(p(''),TW,'DCE6F1',n+1)}</w:tr>`;
+    const R=rowsOf(bl);
+    for(let i=0;i<R;i++){
+      b+=`<w:tr><w:trPr><w:cantSplit/></w:trPr>${tc(p(bl.label[i]?run(bl.label[i],i===0?{b:1,i:1}:{c:'444444'}):''),DW)}`;
+      bl.cols.forEach(c=>{
+        if(c.closed){b+=tc(p(i===0?run('Клиника',{b:1,i:1}):i===1?run('не работает',{b:1,i:1}):''),CW,'D9D9D9');return}
+        const e=c.lines[i];
+        b+=tc(e?p(run(e.name+' '+shiftTime(e.shift)+' ')+run(String(e.chair),{b:1,sz:22}))+(e.sub?p(run(e.sub,{i:1,sz:18,c:e.none?'C00000':'444444'})):''):p(''),CW);
+      });
+      b+=`</w:tr>`;
+    }
+  });
+  b+=`</w:tbl>`+p(run(g.footer,{b:1,i:1}),{jc:'right'});
+  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${b}<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="567" w:right="720" w:bottom="567" w:left="720" w:header="300" w:footer="300" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+}
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+// простой zip без сжатия — работает без интернета
+function zipStore(files){
+  const enc=new TextEncoder();const parts=[],central=[];let off=0;
+  const u16=n=>[n&255,(n>>>8)&255],u32=n=>[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];
+  files.forEach(([name,text])=>{
+    const nb=enc.encode(name),db=enc.encode(text),crc=crc32(db);
+    const head=new Uint8Array([0x50,0x4b,3,4,...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(db.length),...u32(db.length),...u16(nb.length),...u16(0)]);
+    parts.push(head,nb,db);
+    central.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(db.length),...u32(db.length),...u16(nb.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nb);
+    off+=head.length+nb.length+db.length;
+  });
+  const csize=central.reduce((x,a)=>x+a.length,0);
+  const end=new Uint8Array([0x50,0x4b,5,6,...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(csize),...u32(off),...u16(0)]);
+  return new Blob([...parts,...central,end],{type:'application/zip'});
+}
+async function buildDocx(g){
+  return zipStore([
+  ['[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'],
+  ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'],
+  ['word/_rels/document.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+  ['word/styles.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman" w:eastAsia="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:lang w:val="ru-RU"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>'],
+  ['word/document.xml',docxXml(g)]]);
+}
+async function saveFile(name,data){
+  if(STANDALONE){const blob=data instanceof Blob?data:new Blob([data]);const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast('Файл сохранён в «Загрузки»');return true}
+  let dl=null;try{dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null}catch(e){}
+  if(!dl){toast('Сохранение файлов недоступно в этом окне. Откройте страницу на claude.ai');return false}
+  try{await dl.save({filename:name,data});toast('Файл сохранён');return true}
+  catch(e){const c=e&&e.code;if(c==='declined')return false;if(c==='rate_limited')toast('Окно сохранения уже открыто');else toast('Не удалось сохранить файл');return false}
+}
+function openExport(){
+  if(!EX.cls)EX.cls=S.cfg.clinics.map(c=>c.id);
+  EX.cls=EX.cls.filter(id=>clById(id));if(!EX.cls.length)EX.cls=S.cfg.clinics.map(c=>c.id);
+  if(!KIND[EX.kind])EX.kind='full';
+  EX.img=null;
+  M.show(()=>{
+    const g=exGrid(EX.kind,EX.cls,range(UI.from,UI.to));const n=g.blocks.length&&g.heads.length;
+    const fm={pdf:['PDF','для печати, неделя на лист'],png:['Картинка','для чатов и групп'],docx:['Word','можно поправить вручную']};
+    const lab={tpl:'Постоянный график',doc:'Врачи на период',full:'Врачи и ассистенты',asst:'По ассистентам'};
+    const help={tpl:'Обычная неделя из «Базовой недели»: Пн–Вс, без дат и ассистентов.',doc:'Кто из врачей работает в выбранные даты, клиники столбцами.',full:'Врачи на даты и под каждым — его ассистент. Где ассистента нет, отмечено красным.',asst:'Столбец на каждого ассистента: к какому врачу, во сколько и в какую клинику.'};
+    return{title:`<h2>Скачать расписание</h2><p class="sub">${EX.kind==='tpl'?'Постоянная неделя':fmtY(UI.from)+' – '+fmtY(UI.to)+'. Период меняется над графиком.'}</p>`,
+    body:`<div><h3 class="sh3">Что</h3><div class="seg" style="flex-wrap:wrap">${Object.keys(lab).map(k=>`<button data-act="ex-kind" data-v="${k}" aria-pressed="${EX.kind===k}">${lab[k]}</button>`).join('')}</div>
+      <p class="sub" style="margin:6px 0 0">${help[EX.kind]}</p></div>
+      <div><h3 class="sh3">Клиники</h3>${S.cfg.clinics.map(c=>`<label class="chk"><input type="checkbox" class="excl" value="${c.id}" ${EX.cls.includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div>
+      <div><h3 class="sh3">Формат</h3><div class="brush">${Object.entries(fm).map(([k,[t,d]])=>`<button data-act="ex-fmt" data-v="${k}" aria-pressed="${EX.fmt===k}" style="flex-direction:column;align-items:flex-start;gap:0"><span>${t}</span><span class="sub" style="font-weight:400;font-size:12px">${d}</span></button>`).join('')}</div>
+      <p class="sub" style="margin:6px 0 0">В файле: «Фамилия ${esc(shiftTime('am'))} <b>2</b>» — время смены и номер кресла. Время меняется в настройках.</p></div>
+      ${n?'':`<div class="note">${EX.kind==='tpl'?'Базовая неделя пустая — расставьте врачей в «Базовой неделе».':'В этом периоде нет смен для выбранных клиник — сначала сформируйте расписание.'}</div>`}
+      ${EX.img?`<div><img class="preview" src="${EX.img}" alt="Готовое расписание"><p class="sub" style="margin:6px 0 0">Картинку можно скопировать и сразу вставить в чат.</p></div>`:''}`,
+    foot:`${EX.img?'<button class="btn" data-act="ex-copyimg">Копировать картинку</button><span class="spacer"></span>':''}<button class="btn" data-act="close">Закрыть</button>${STANDALONE?`<button class="btn" data-act="ex-print" ${n?'':'disabled'}>Печать</button>`:''}<button class="btn primary ${EX.busy?'busy':''}" data-act="ex-run" ${n?'':'disabled'}>${EX.busy?'Готовлю файл…':'Скачать'}</button>`,
+    bind:r=>r.querySelectorAll('.excl').forEach(c=>c.onchange=()=>{EX.cls=[...r.querySelectorAll('.excl:checked')].map(x=>x.value);EX.img=null;M.refresh()})};
+  },true);
+}
+/* ---------- copy ---------- */
+async function copyTable(){
+  const rows=[['Дата','День','Клиника','Кресло','Врач','Смена','Ассистент']];
+  range(UI.from,UI.to).forEach(d=>forEntries(d,(en,cl,ch)=>rows.push([fmt(d)+'.'+d.slice(0,4),WD[wdOf(d)],cl.name,ch+1,docName(en.doctorId),SH[en.shift].l,asById(en.assistantId)?.name||''])));
+  if(rows.length<2){toast('В периоде нет смен');return}
+  const txt=rows.map(r=>r.join('\t')).join('\n');
+  try{await navigator.clipboard.writeText(txt);toast('Таблица скопирована — вставьте в Excel')}
+  catch(e){M.show(()=>({title:'<h2>Скопируйте вручную</h2>',body:`<textarea id="cpy" rows="10" readonly>${esc(txt)}</textarea>`,foot:'<button class="btn primary" data-act="close">Готово</button>',bind:r=>{const t=r.querySelector('#cpy');t.focus();t.select()}}))}
+}
+
+/* ---------- actions ---------- */
+const ACT={
+  tab:b=>{UI.tab=b.dataset.v;saveUI();render();window.scrollTo(0,0)},
+  mode:b=>{UI.mode=b.dataset.v;saveUI();render()},
+  'shift-period':b=>{const n=+b.dataset.v;UI.from=addDays(UI.from,n);UI.to=addDays(UI.to,n);MISS.clear();saveUI();render()},
+  rail:(b,e)=>{e.preventDefault();UI.railOpen=!UI.railOpen;saveUI();$('#rail').open=UI.railOpen},
+  'open-gen':()=>{if(!S.cfg.clinics.length){UI.mode='week';render();toast('Сначала добавьте клинику');return}openGen()},
+  'open-auto':openAuto,copy:copyTable,
+  pick:b=>openPicker(b.dataset.d,b.dataset.e),
+  assign:b=>{const f=findEntry(b.dataset.d,b.dataset.e);if(!f)return;f.en.assistantId=b.dataset.a||null;MISS.delete(f.en.id);markMonth(ymOf(b.dataset.d));M.close()},
+  'edit-ent':b=>openEntryEdit(b.dataset.d,b.dataset.e),
+  'add-ent':b=>openEntryEdit(b.dataset.d,null,{cid:b.dataset.c,ch:+b.dataset.ch}),
+  avail:b=>openAvail(b.dataset.a),
+  tpl:b=>openTpl(+b.dataset.ch,+b.dataset.w),
+  'clinic-sel':b=>{UI.clinic=b.dataset.v;saveUI();render()},
+  'clinic-add':()=>{const c={id:uid(),name:'Клиника '+(S.cfg.clinics.length+1),chairs:3,template:{}};S.cfg.clinics.push(c);UI.clinic=c.id;markCfg();saveUI();render();setTimeout(()=>{const i=$('#clName');i&&(i.focus(),i.select())},30)},
+  'clinic-del':b=>{if(!armed(b,'Точно удалить клинику?'))return;S.cfg.clinics=S.cfg.clinics.filter(c=>c.id!==UI.clinic);UI.clinic=null;markCfg();render()},
+  chairs:b=>{const c=clById(UI.clinic);c.chairs=Math.min(20,Math.max(1,c.chairs+(+b.dataset.v)));markCfg();render()},
+  doc:b=>openDoc(b.dataset.v),as:b=>openAs(b.dataset.v),tags:openTags,
+  tg:b=>{const t=TG[b.dataset.k];if(!t)return;const v=b.dataset.v,cur=t.get();t.set(cur.includes(v)?cur.filter(x=>x!==v):[...cur,v]);M.refresh()},
+  'tg-new':b=>{const k=b.dataset.k;const inp=$('#newTag-'+k);const t=newTag(inp.value);if(!t)return;
+    if(TG[k]){const cur=TG[k].get();if(!cur.includes(t.id))TG[k].set([...cur,t.id])}M.refresh();setTimeout(()=>$('#newTag-'+k)?.focus(),20)},
+  'tg-del':b=>{if(!armed(b,'Точно?'))return;const id=b.dataset.v;S.cfg.tags=S.cfg.tags.filter(t=>t.id!==id);
+    S.cfg.doctors.forEach(d=>d.tags=d.tags.filter(x=>x!==id));S.cfg.assistants.forEach(a=>a.tags=a.tags.filter(x=>x!==id));markCfg();M.refresh()},
+  'del-examples':b=>{if(!armed(b,'Удалить всех примерных врачей и ассистентов?'))return;
+    removeAssistants(S.cfg.assistants.filter(a=>a.example).map(a=>a.id));removeDoctors(S.cfg.doctors.filter(d=>d.example).map(d=>d.id));render();toast('Примеры удалены')},
+  close:()=>M.close(),
+  settings:openSettings,
+  logout:async()=>{M.close();if(SB)await SB.auth.signOut();AUTHED=false;render()},
+  export:openExport,
+  orient:b=>{UI.orient=b.dataset.v;saveUI();M.refresh()},
+  mback:(b,e)=>{if(e.target===b)M.close()}
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+  if(a==='mback'&&e.target!==b)return;const f=ACT[a];if(f)f(b,e)});
+document.addEventListener('change',e=>{
+  if(e.target.id==='pFrom'&&e.target.value){UI.from=e.target.value;if(UI.to<UI.from)UI.to=UI.from;MISS.clear();saveUI();render()}
+  if(e.target.id==='pTo'&&e.target.value){UI.to=e.target.value<UI.from?UI.from:e.target.value;MISS.clear();saveUI();render()}
+});
+document.addEventListener('input',e=>{if(e.target.id==='clName'){const c=clById(UI.clinic);if(c){c.name=e.target.value;markCfg();const b=document.querySelector(`[data-act=clinic-sel][data-v="${c.id}"]`);if(b)b.textContent=c.name}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id&&e.target.id.startsWith('newTag-')){e.preventDefault();ACT['tg-new']({dataset:{k:e.target.id.slice(7)}})}});
+document.addEventListener('submit',e=>{e.preventDefault();
+  if(e.target.id==='loginForm'){doLogin();return}
+  if(e.target.id==='addDoc'){const n=$('#newDoc').value.trim();if(!n)return;const d={id:uid(),name:n,tags:[],prio:[],block:[]};S.cfg.doctors.push(d);markCfg();render();openDoc(d.id)}
+  if(e.target.id==='addAs'){const n=$('#newAs').value.trim();if(!n)return;const a={id:uid(),name:n,tags:[]};S.cfg.assistants.push(a);markCfg();render();openAs(a.id)}
+});
+
+ACT['ex-kind']=b=>{EX.kind=b.dataset.v;EX.img=null;M.refresh()};
+ACT['ex-fmt']=b=>{EX.fmt=b.dataset.v;EX.img=null;M.refresh()};
+ACT['ex-copyimg']=async()=>{
+  try{const blob=await (await fetch(EX.img)).blob();await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('Картинка скопирована')}
+  catch(e){toast('Браузер не дал скопировать — нажмите на картинку правой кнопкой и выберите «Копировать»')}
+};
+ACT['ex-print']=()=>{
+  const g=exGrid(EX.kind,EX.cls,range(UI.from,UI.to));if(!g.blocks.length)return;
+  let pa=document.getElementById('printArea');if(!pa){pa=document.createElement('div');pa.id='printArea';document.body.appendChild(pa)}
+  pa.innerHTML=weekChunks(g.blocks).map(b=>exPageHTML(g,b)).join('');
+  setTimeout(()=>window.print(),50);
+};
+ACT['ex-run']=async()=>{
+  if(EX.busy)return;const kind=EX.kind,fm=EX.fmt;
+  const g=exGrid(kind,EX.cls,range(UI.from,UI.to));if(!g.blocks.length)return;
+  const base=kind==='tpl'?KIND.tpl:`${KIND[kind]} ${fmt(UI.from)}-${fmt(UI.to)}`;
+  EX.busy=true;M.refresh();
+  try{
+    if(fm==='docx'){await saveFile(base+'.docx',await buildDocx(g))}
+    else if(fm==='png'){
+      const cv=await toCanvas(exPageHTML(g,g.blocks));
+      EX.img=cv.toDataURL('image/png');
+      const blob=await new Promise(r=>cv.toBlob(r,'image/png'));
+      EX.busy=false;M.refresh();
+      await saveFile(base+'.png',blob);
+    }else{
+      await loadLib(JSPDF);const pdf=new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});let first=true;
+      for(const blocks of weekChunks(g.blocks)){
+        const cv=await toCanvas(exPageHTML(g,blocks));
+        if(!first)pdf.addPage();first=false;
+        let w=297,h=cv.height*297/cv.width;if(h>210){h=210;w=cv.width*210/cv.height}
+        pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',(297-w)/2,0,w,h);
+      }
+      await saveFile(base+'.pdf',pdf.output('blob'));
+    }
+  }catch(e){toast(e&&e.message==='lib'?(STANDALONE?'Для PDF и картинки нужен интернет. Без интернета используйте «Печать» или Word':'Не загрузились инструменты для файла — проверьте интернет'):'Не удалось подготовить файл')}
+  EX.busy=false;if(M.open)M.refresh();
+};
+
+/* ---------- backup ---------- */
+let BK=null;
+ACT['bk-save']=()=>{const data={app:'grafik-assistentov',v:1,saved:new Date().toISOString(),cfg:S.cfg,avail:S.avail,months:S.months};
+  saveFile('График ассистентов — копия '+fmt(TODAY)+'.json',JSON.stringify(data))};
+function importBackup(f){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.app!=='grafik-assistentov'||!d.cfg)throw 0;
+  BK={data:d,when:d.saved?fmtY(iso(new Date(d.saved))):'?'};M.refresh()}catch(e){toast('Это не файл резервной копии графика')}};r.readAsText(f)}
+ACT['bk-cancel']=()=>{BK=null;M.refresh()};
+ACT['bk-apply']=()=>{if(!BK)return;const d=BK.data;
+  const oldA=Object.keys(S.avail),oldM=Object.keys(S.months);
+  S.cfg=clone(d.cfg);S.avail=clone(d.avail||{});S.months=clone(d.months||{});normalize();
+  markCfg();new Set([...oldA,...Object.keys(S.avail)]).forEach(markAvail);new Set([...oldM,...Object.keys(S.months)]).forEach(markMonth);
+  BK=null;MISS.clear();M.close();toast('Данные загружены из файла')};
+
+
+render();
+initStore();
+</script>
+
+</body>
+</html>
