@@ -384,7 +384,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 19:43'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 19:59'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -1542,7 +1542,7 @@ function autofill(o){
 function openSettings(){
   BK=null;
   if(SUPA_ON&&!isAdmin()){M.show(()=>({title:'<h2>Настройки</h2>',body:`<div><h3 class="sh3">Аккаунт</h3><div class="row"><span class="sub">Вы вошли как <b>${esc(ME&&ME.login||'')}</b></span><span class="spacer"></span><button class="btn sm" data-act="pw-change">Сменить пароль</button><button class="btn sm" data-act="logout">Выйти</button></div></div>
-    ${['assistant','doctor'].includes(ROLE())?`<div><h3 class="sh3">Общий график</h3><div class="seg"><button data-act="orient" data-v="h" aria-pressed="${UI.orient!=='v'}">Даты по горизонтали</button><button data-act="orient" data-v="v" aria-pressed="${UI.orient==='v'}">Даты по вертикали</button></div></div>`:''}`,foot:`<button class="btn" data-act="tour">Пройти обучение заново</button>${BUILD?`<span class="sub">Версия от ${esc(BUILD)}</span>`:''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}));return}
+    ${['assistant','doctor'].includes(ROLE())?`<div><h3 class="sh3">Общий график</h3><div class="seg"><button data-act="orient" data-v="h" aria-pressed="${UI.orient!=='v'}">Даты по горизонтали</button><button data-act="orient" data-v="v" aria-pressed="${UI.orient==='v'}">Даты по вертикали</button></div></div>`:''}`,foot:`<button class="btn" data-act="tour">Пройти обучение заново</button>${BUILD?`<span class="sub">Версия от ${esc(BUILD.split(' ')[0])}</span>`:''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}));return}
   M.show(()=>{const st=SET();const sw=(id,on,title,desc,dis)=>`<label class="opt ${dis?'dis':''}"><input type="checkbox" id="${id}" ${on?'checked':''} ${dis?'disabled':''}><span><b>${title}</b><br><span class="sub">${desc}</span></span></label>`;
     return{title:`<h2>Настройки</h2>`,
     body:`<div><h3 class="sh3">Вид графика</h3><p class="sub" style="margin:0 0 8px">Запоминается в этом браузере.</p>
@@ -1558,7 +1558,7 @@ function openSettings(){
       <div><h3 class="sh3">Резервная копия</h3><p class="sub" style="margin:0 0 8px">Все врачи, ассистенты, даты и графики в одном файле. Так данные переносятся между онлайн- и офлайн-версией.</p>
       <div class="row"><button class="btn" data-act="bk-save">Сохранить в файл</button><label class="btn" for="bkFile" style="cursor:pointer">Загрузить из файла</label><input type="file" id="bkFile" accept=".json,application/json" hidden></div>
       ${BK?`<div class="note" style="margin-top:8px">Файл от ${esc(BK.when)}: врачей ${BK.data.cfg.doctors.length}, ассистентов ${BK.data.cfg.assistants.length}. Текущие данные будут заменены.<span class="spacer"></span><button class="btn sm" data-act="bk-cancel">Отмена</button><button class="btn sm danger" data-act="bk-apply">Заменить</button></div>`:''}</div>`,
-    foot:`<button class="btn" data-act="tour">Пройти обучение заново</button>${BUILD?`<span class="sub">Версия от ${esc(BUILD)}</span>`:''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`,
+    foot:`<button class="btn" data-act="tour">Пройти обучение заново</button>${BUILD?`<span class="sub">Версия от ${esc(BUILD.split(' ')[0])}</span>`:''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`,
     bind:r=>{const fi=r.querySelector('#bkFile');if(fi)fi.onchange=e=>{const f=e.target.files[0];if(f)importBackup(f)};const set=(k,v)=>{S.cfg.settings=Object.assign({},SET(),{[k]:v});markCfg();M.refresh()};
       r.querySelector('#sTags').onchange=e=>set('showTags',e.target.checked);
       r.querySelector('#sRates').onchange=e=>set('rates',e.target.checked);
