@@ -384,7 +384,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 19:36'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 19:43'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -760,10 +760,24 @@ function openInvite(role,card,orgId){
   ACT['inv-del']=async b=>{if(!armed(b,'Точно?'))return;const r=await SB.from('invites').delete().eq('token',b.dataset.v);if(r.error)toast('Не удалось отменить');else{INVITES=INVITES.filter(i=>i.token!==b.dataset.v);list=list.filter(i=>i.token!==b.dataset.v);M.refresh();toast('Ссылка отменена')}};
 }
 
+/* сброс пароля сотруднику */
+let PWR={};
+function genPw(){const A='abcdefghjkmnpqrstuvwxyz',D='23456789';const r=crypto.getRandomValues(new Uint8Array(8));let p='';for(let i=0;i<8;i++)p+=(i<5?A:D)[r[i]%(i<5?A.length:D.length)];return p}
+function pwResetHTML(u){
+  if(PWR.done)return`<div class="note info" style="flex-direction:column;align-items:stretch;gap:6px"><b>Новый пароль для «${esc(u.login)}» установлен</b>
+    <div class="row" style="gap:6px"><input type="text" id="pwrNew" value="${esc(PWR.pw)}" readonly style="flex:1;min-width:140px;font-weight:700;letter-spacing:.04em"><button class="btn sm primary" data-act="u-pw-copy">Копировать</button></div>
+    <span class="sub">Передайте его сотруднику лично или в мессенджере. Старый пароль больше не работает, со всех устройств он вышел. Сменить пароль на свой он сможет в «Настройках».</span>
+    <div><button class="btn sm" data-act="u-pw-cancel">Готово</button></div></div>`;
+  return`<div class="newp"><b>Новый пароль для «${esc(u.login)}»</b>
+    <div class="row" style="gap:6px"><input type="text" id="pwrNew" value="${esc(PWR.pw||'')}" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;font-weight:700;letter-spacing:.04em"><button class="btn sm" data-act="u-pw-gen">Придумать другой</button></div>
+    ${PWR.err?`<p class="lgerr">${esc(PWR.err)}</p>`:''}
+    <div class="row" style="gap:6px"><button class="btn sm primary ${PWR.busy?'busy':''}" data-act="u-pw-save">Задать пароль</button><button class="btn sm ghost" data-act="u-pw-cancel">Отмена</button></div></div>`;
+}
+
 /* управление пользователями (для администратора) */
 const ROLE_L={pending:'Ожидает',owner:'Главный администратор',admin:'Ответственный',assistant:'Ассистент',doctor:'Врач',blocked:'Доступ закрыт'};
 function openUsers(){
-  let list=null,err='';const draft={};
+  PWR={};let list=null,err='';const draft={};
   const load=async()=>{const r=await SB.from('members').select('*').order('created_at');if(r.error)err=r.error.message;else{list=LEGACY?r.data:r.data.filter(u=>u.org_id===ORG||(isOwner()&&!u.org_id));list.forEach(u=>draft[u.user_id]={role:u.role,card:u.card_id||''})}if(M.open)M.refresh()};
   const cardName=(role,id)=>role==='assistant'?asById(id)?.name:role==='doctor'?docById(id)?.name:'';
   const row=u=>{const dr=draft[u.user_id];const self=u.user_id===MYID;const changed=dr.role!==u.role||(dr.card||'')!==(u.card_id||'');
@@ -774,7 +788,9 @@ function openUsers(){
         <select class="urole" data-u="${u.user_id}" aria-label="Роль">${(u.role==='pending'?['pending']:[]).concat(['assistant','doctor','admin','blocked']).map(r=>`<option value="${r}" ${dr.role===r?'selected':''}>${r==='pending'?'— выберите роль —':ROLE_L[r]}</option>`).join('')}</select>
         ${cards?`<select class="ucard" data-u="${u.user_id}" aria-label="Карточка"><option value="">— чья карточка —</option>${cards.slice().sort(byName).map(c=>`<option value="${c.id}" ${dr.card===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
         ${changed?`<button class="btn sm primary" data-act="u-save" data-u="${u.user_id}">${u.role==='pending'?'Дать доступ':'Сохранить'}</button>`:''}
-        ${u.role==='pending'?`<button class="btn sm" data-act="u-reject" data-u="${u.user_id}">Отклонить</button>`:''}</div>`}</div>`};
+        ${u.role==='pending'?`<button class="btn sm" data-act="u-reject" data-u="${u.user_id}">Отклонить</button>`:''}
+        ${u.role!=='pending'&&!changed?`<button class="btn sm ghost" data-act="u-pw" data-u="${u.user_id}">Сбросить пароль</button>`:''}</div>
+        ${PWR.u===u.user_id?pwResetHTML(u):''}`}</div>`};
   M.show(()=>{
     let body;
     if(err)body=`<div class="note">Не удалось загрузить список: ${esc(err)}</div>`;
@@ -791,6 +807,16 @@ function openUsers(){
   const save=async(uid,role,card)=>{const r=await SB.from('members').update(LEGACY?{role,card_id:card||null}:{role,card_id:card||null,org_id:ORG}).eq('user_id',uid);
     if(r.error)toast(/card_id/.test(r.error.message)?'Сначала выполните новый SQL в Supabase':'Не удалось изменить: '+r.error.message);else toast(role==='blocked'?'Доступ закрыт':'Сохранено');await load();loadPeople()};
   ACT['u-reload']=()=>{list=null;M.refresh();load()};
+  ACT['u-pw']=b=>{PWR={u:b.dataset.u,pw:genPw(),done:false,err:'',busy:false};M.refresh();setTimeout(()=>$('#pwrNew')?.select(),30)};
+  ACT['u-pw-gen']=()=>{PWR.pw=genPw();PWR.err='';M.refresh()};
+  ACT['u-pw-cancel']=()=>{PWR={};M.refresh()};
+  ACT['u-pw-copy']=async()=>{try{await navigator.clipboard.writeText(PWR.pw);toast('Пароль скопирован')}catch(e){const i=$('#pwrNew');if(i){i.focus();i.select()}}};
+  ACT['u-pw-save']=async()=>{const i=$('#pwrNew');const pw=(i?i.value:PWR.pw).trim();PWR.pw=pw;
+    if(pw.length<6){PWR.err='Пароль должен быть не короче 6 символов';M.refresh();return}
+    PWR.busy=true;PWR.err='';M.refresh();
+    const r=await SB.rpc('admin_set_password',{target:PWR.u,new_password:pw});PWR.busy=false;
+    if(r.error){const m=r.error.message||'';PWR.err=/admin_set_password|function/i.test(m)&&/not|find|exist/i.test(m)?'Сначала выполните SQL для сброса пароля в Supabase':m;M.refresh();return}
+    PWR.done=true;M.refresh()};
   ACT['u-save']=b=>{const d=draft[b.dataset.u];if(d.role==='pending'){toast('Выберите роль');return}
     if(['assistant','doctor'].includes(d.role)&&!d.card){toast('Выберите, чья это карточка');return}save(b.dataset.u,d.role,d.card)};
   ACT['u-reject']=b=>save(b.dataset.u,'blocked','');
