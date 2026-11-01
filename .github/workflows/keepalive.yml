@@ -26,6 +26,14 @@ jobs:
             exit 1
           fi
 
+      - name: Запрос к тестовой базе
+        continue-on-error: true
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://qrlzktxrmhpdlbjmgxxy.supabase.co/rest/v1/orgs?select=id&limit=1" \
+            -H "apikey: sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB")
+          echo "Ответ тестовой базы: $code"
+
       - uses: actions/checkout@v5
 
       - name: Не дать GitHub отключить расписание
