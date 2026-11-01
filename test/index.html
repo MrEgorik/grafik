@@ -358,6 +358,12 @@ body.has-box .top{position:static}
 .board.amap.dens-xc td{min-width:26px;padding:2px 1px;font-size:11px}
 .board.amap.dens-xc th.lab{min-width:100px;font-size:11px}
 .envtag{position:fixed;left:0;right:0;bottom:0;z-index:55;background:#B3261E;color:#FFFFFF;text-align:center;font-weight:700;font-size:12px;letter-spacing:.04em;padding:4px max(16px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));pointer-events:none}
+.presence{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);max-width:280px;min-width:0}
+.presence .pp{width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:10.5px;font-weight:700;border:2px solid var(--surface);margin-left:-6px;flex:none}
+.presence .pp:first-child{margin-left:0}
+.presence .ppt{margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:700px){.presence .ppt{display:none}}
+.netbar{position:fixed;left:0;right:0;top:0;z-index:58;background:var(--bad);color:#FFFFFF;font-weight:700;font-size:13px;text-align:center;padding:calc(6px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -372,6 +378,7 @@ body.has-box .top{position:static}
   <div class="brand"><i>A</i>График ассистентов</div>
   <span class="orgname" id="orgname"></span>
   <nav class="tabs" id="tabs"></nav>
+  <div class="presence" id="presence" hidden></div>
   <div class="store" id="store"><b></b><span>Загрузка…</span></div>
   <button class="bell" data-act="bell" id="bell" hidden aria-label="Уведомления"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="badge num" id="bellN" hidden></span></button>
   <button class="btn sm" data-act="settings">Настройки</button>
@@ -384,7 +391,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 19:59'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 20:11'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -438,6 +445,7 @@ const canon=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)
 const live=get=>new Proxy({},{get:(t,k)=>{const x=get();return x?x[k]:undefined},set:(t,k,v)=>{const x=get();if(x)x[k]=v;return true},deleteProperty:(t,k)=>{const x=get();if(x)delete x[k];return true}});
 const Store={
   mode:'local',db:null,dirty:new Set(),ver:{},timers:{},chains:{},readonly:false,sent:{},
+  sv:{},base:{},pending:new Set(), // sv — версия документа в базе, base — его содержимое, известное нам
   mark(path){
     if(DEMO)return;
     if(this.readonly){toast('Нет прав на изменение этих данных');return}
@@ -454,6 +462,11 @@ const Store={
   },
   flush(path){
     const v=this.ver[path];
+    if(this.mode==='supa'&&VER_OK){
+      const prev=this.chains[path]||Promise.resolve();
+      this.chains[path]=prev.then(()=>saveLoop(path)).catch(e=>console.warn(e)).finally(()=>{if(this.ver[path]===v&&!this.pending.has(path))this.dirty.delete(path)});
+      return;
+    }
     if(this.mode==='supa'){
       const body=this.body(path);const prev=this.chains[path]||Promise.resolve();
       if(body){const l=this.sent[path]=this.sent[path]||[];l.push(canon(body));if(l.length>8)l.shift()}
@@ -516,8 +529,127 @@ const rub=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 function costMap(){const m={};range(UI.from,UI.to).forEach(d=>forEntries(d,en=>{if(en.assistantId){const a=asById(en.assistantId);m[en.assistantId]=(m[en.assistantId]||0)+shiftCost(a,en.shift)}}));return m}
 function setStore(cls,text){const el=$('#store');el.className='store '+cls;el.lastElementChild.textContent=text}
 
-let LIVE=false,SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
+let LIVE_READY=false,LIVE=false,SB=null,AUTHED=false,LOGIN_ERR='',LOGIN_BUSY=false,LOGIN_OK='',AUTH_TAB='in',ME=null,MYID=null,PENDING=false;
 const SB_LIBS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://unpkg.com/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://fastly.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js','https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'];
+/* ---------- совместная работа: версии и объединение правок ---------- */
+let VER_OK=false,OFFLINE=false,CONFLICTS=[];
+const cl0=v=>v===undefined?undefined:clone(v);
+const isObj=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+const same=(a,b)=>a===b||(a!==undefined&&b!==undefined&&canon(a)===canon(b));
+// трёхстороннее объединение: base — что было, mine — мои правки, theirs — что сейчас в базе
+function merge3(base,mine,theirs,path,conf){
+  if(same(mine,theirs))return cl0(mine);
+  if(same(mine,base))return cl0(theirs);
+  if(same(theirs,base))return cl0(mine);
+  if(isObj(mine)&&isObj(theirs)){const b=isObj(base)?base:{};const out={};
+    for(const k of new Set([...Object.keys(mine),...Object.keys(theirs),...Object.keys(b)])){const v=merge3(b[k],mine[k],theirs[k],path.concat(k),conf);if(v!==undefined)out[k]=v}
+    return out}
+  if(Array.isArray(mine)&&Array.isArray(theirs)){
+    const ida=a=>Array.isArray(a)&&a.every(x=>isObj(x)&&x.id!=null);
+    if(ida(mine)&&ida(theirs)&&(base===undefined||ida(base))){
+      const m=new Map(mine.map(x=>[x.id,x])),t=new Map(theirs.map(x=>[x.id,x])),bm=new Map((base||[]).map(x=>[x.id,x]));
+      const out=[];for(const id of[...mine.map(x=>x.id),...theirs.map(x=>x.id).filter(id=>!m.has(id))]){const v=merge3(bm.get(id),m.get(id),t.get(id),path.concat(id),conf);if(v!==undefined)out.push(v)}
+      return out}
+    if(mine.concat(theirs).every(x=>x===null||typeof x!=='object')){const b=new Set(Array.isArray(base)?base:[]),M=new Set(mine),T=new Set(theirs);
+      return[...new Set([...mine,...theirs])].filter(x=>(M.has(x)&&T.has(x))||(M.has(x)&&!b.has(x))||(T.has(x)&&!b.has(x)))}
+  }
+  conf.push(path);return cl0(mine); // одно и то же изменили оба — оставляем своё и сообщаем
+}
+function applyMerged(path,data){
+  if(data===undefined){removeDoc(path);return}
+  if(path==='cfg/main'){const lp=splitCfg().priv;PRIV=lp}
+  applyDoc(path,data);
+}
+function conflictLabel(path,p){
+  const[col,id]=path.split('/');
+  if(col==='months'||col==='pub'){const[,d,cid,ch,eid]=p;if(!d)return'График';const c=clById(cid);let doc='';
+    if(eid){const f=withSrc(col==='pub',()=>findEntry(d,eid));if(f)doc=', '+docName(f.en.doctorId)}
+    return`Смена ${fmt(d)}${c?', '+c.name:''}${ch!==undefined?', кресло '+(+ch+1):''}${doc}`}
+  if(col==='cfg'){const[k,x]=p;
+    if(k==='doctors')return`Карточка врача «${docById(x)?.name||''}»`;
+    if(k==='assistants')return`Карточка ассистента «${asById(x)?.name||''}»`;
+    if(k==='clinics')return`Клиника «${clById(x)?.name||''}» (кресла и базовая неделя)`;
+    return{tags:'Навыки',settings:'Настройки',collect:'Сбор дат',calls:'Клич',publishedAt:'Публикация'}[k]||'Общие данные'}
+  if(col==='avail')return`Даты ассистента «${asById(id)?.name||''}»${p[1]?' на '+fmt(p[1]):''}`;
+  return'Данные';
+}
+function reportConflicts(path,conf,by){
+  const who=(MEMBERS.find(u=>u.user_id===by)||{});const name=who.name||who.login||'другой ответственный';
+  const labels=[...new Set(conf.map(p=>conflictLabel(path,p)))];
+  labels.forEach(l=>CONFLICTS.push({t:l,s:`Одновременно изменил(а) ${name}. Оставлено ваше значение — проверьте.`,at:Date.now()}));
+  toast(`${labels[0]}: одновременно изменил(а) ${name}. Оставлено ваше значение${labels.length>1?` (и ещё ${labels.length-1})`:''}`,9000);updateBell();
+}
+const isNetErr=e=>!navigator.onLine||/fetch|network|load failed|timeout|ERR_|aborted/i.test((e&&(e.message||e.details))||String(e||''));
+async function saveLoop(path){
+  if(!ORG&&!LEGACY)return;
+  for(let attempt=0;attempt<6;attempt++){
+    const body=Store.body(path);const base=Store.sv[path]??null;
+    let r;try{r=await SB.rpc('save_doc',{p:P(path),d:body??null,base})}catch(e){r={error:e}}
+    if(r.error){
+      if(isNetErr(r.error)){goOffline(path);return}
+      const m=r.error.message||'';
+      if(/save_doc|PGRST202|function/i.test(m)&&/find|exist|not/i.test(m)){VER_OK=false;Store.pending.delete(path);Store.flush(path);return}
+      toast(/закреплен/i.test(m)?m+'. Изменение не сохранено':/row-level|permission/i.test(m)?'Нет прав на изменение':'Не удалось сохранить: '+m);console.warn(r.error);return}
+    Store.pending.delete(path);if(OFFLINE)goOnline();
+    const res=r.data||{};
+    if(typeof res.ok!=='boolean'){VER_OK=false;Store.flush(path);return} // база без поддержки версий — сохраняем по-старому
+    if(res.ok){Store.sv[path]=res.version??undefined;Store.base[path]=cl0(body??undefined);return}
+    if(res.denied){toast('Нет прав на изменение этих данных');return}
+    if(res.version==null&&res.data==null){toast('Не удалось сохранить изменение');return}
+    // кто-то сохранил раньше нас — объединяем
+    const theirs=res.data===null||res.data===undefined?undefined:res.data;const mine=Store.body(path)??undefined;const conf=[];
+    const merged=merge3(Store.base[path],mine,theirs,[],conf);
+    applyMerged(path,merged);Store.base[path]=cl0(theirs);Store.sv[path]=res.version;
+    if(conf.length)reportConflicts(path,conf,res.by);
+    renderSoft();
+  }
+  toast('Не удалось сохранить из-за частых одновременных правок. Повторите действие');
+}
+function goOffline(path){
+  Store.pending.add(path);if(!OFFLINE){OFFLINE=true;setStore('warn','Нет связи');showNet()}
+  clearTimeout(goOffline.t);goOffline.t=setTimeout(tryResume,5000);
+}
+function goOnline(){OFFLINE=false;setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');showNet();toast('Связь восстановлена — изменения сохранены')}
+function tryResume(){if(!Store.pending.size){if(OFFLINE&&navigator.onLine)goOnline();return}[...Store.pending].forEach(p=>Store.flush(p))}
+function showNet(){let b=$('#netBar');if(OFFLINE){if(!b){b=document.createElement('div');b.id='netBar';b.className='netbar';document.body.appendChild(b)}
+  b.textContent='Нет связи с базой. Ваши изменения сохранятся автоматически, когда связь вернётся — не закрывайте вкладку.'}else if(b)b.remove()}
+// подтянуть свежие данные после обрыва связи или долгого простоя
+async function resync(){
+  if(!SB||!AUTHED||!VER_OK||DEMO||(!ORG&&!LEGACY))return;
+  const pre=ORG+':';const{data,error}=await SB.from('docs').select('path,data,version').like('path',pre+'%');if(error)return;
+  const seen=new Set();let ch=false;
+  (data||[]).forEach(r=>{const path=r.path.slice(pre.length);seen.add(path);if(Store.dirty.has(path))return;
+    if((Store.sv[path]||0)<r.version){applyDoc(path,r.data);Store.sv[path]=r.version;Store.base[path]=cl0(Store.body(path)??undefined);ch=true}});
+  Object.keys(Store.sv).forEach(path=>{if(!seen.has(path)&&!Store.dirty.has(path)){removeDoc(path);delete Store.sv[path];delete Store.base[path];ch=true}});
+  if(ch)renderSoft();
+}
+window.addEventListener('online',()=>{tryResume();resync()});
+window.addEventListener('offline',()=>{if(Store.dirty.size){OFFLINE=true;setStore('warn','Нет связи');showNet()}});
+let HIDDEN_AT=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')HIDDEN_AT=Date.now();else if(HIDDEN_AT&&Date.now()-HIDDEN_AT>60000)resync()});
+window.addEventListener('beforeunload',e=>{if(SUPA_ON&&Store.dirty.size){e.preventDefault();e.returnValue=''}});
+
+/* ---------- кто ещё сейчас в программе ---------- */
+let PRES=null,PEERS=[],LAST_TRACK='';
+const WHERE_L={edit:'редактирует график',week:'в базовой неделе',amap:'смотрит доступность',pub:'смотрит опубликованное',doctors:'в разделе «Врачи»',assistants:'в разделе «Ассистенты»'};
+const presWhere=()=>UI.tab==='sched'?({board:'edit',week:'week',amap:'amap',pub:'pub'}[UI.mode]||'edit'):UI.tab;
+function startPresence(){
+  if(!SB||!isAdmin()||LEGACY||!ORG)return;
+  if(PRES){try{SB.removeChannel(PRES)}catch(e){}PRES=null;PEERS=[]}
+  const o=ORGS.find(x=>x.id===ORG)||{};
+  PRES=SB.channel(`p-${ORG}-${o.code||'x'}`,{config:{presence:{key:MYID||'me'}}});
+  PRES.on('presence',{event:'sync'},()=>{const st=PRES.presenceState();
+    PEERS=Object.entries(st).filter(([k])=>k!==MYID).map(([k,a])=>Object.assign({id:k},a[a.length-1]||{}));updatePresence()});
+  PRES.subscribe(st=>{if(st==='SUBSCRIBED'){LAST_TRACK='';trackPresence()}});
+}
+function trackPresence(){if(!PRES||!AUTHED)return;const w=presWhere();if(w===LAST_TRACK)return;LAST_TRACK=w;
+  try{PRES.track({name:(ME&&(ME.name||ME.login))||'',where:w,at:Date.now()})}catch(e){}}
+function updatePresence(){const el=$('#presence');if(!el)return;
+  if(!PEERS.length||!isAdmin()){el.hidden=true;el.innerHTML='';}
+  else{el.hidden=false;el.innerHTML=PEERS.map(p=>`<span class="pp" title="${esc(p.name)} — ${esc(WHERE_L[p.where]||'в программе')}">${esc((p.name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase())}</span>`).join('')+`<span class="ppt">${PEERS.length===1?esc(PEERS[0].name)+' '+esc(WHERE_L[PEERS[0].where]||'в программе'):'Ещё в программе: '+PEERS.length}</span>`}
+  const n=$('#peerNote');const ed=PEERS.filter(p=>p.where==='edit');
+  if(n){n.hidden=!(ed.length&&editing());n.innerHTML=ed.length?`<span>Сейчас график также редактирует: <b>${ed.map(p=>esc(p.name)).join(', ')}</b>. Правки объединяются автоматически, но лучше не менять одни и те же смены одновременно.</span>`:''}
+}
+
 function applyDoc(path,data){const[col,id]=path.split('/');
   if(col==='cfg'&&id==='main'){S.cfg=clone(data);mergePriv();normalize()}
   else if(col==='cfg'&&id==='private'){PRIV=clone(data||{});PRIV.doctors=PRIV.doctors||{};PRIV.assistants=PRIV.assistants||{};mergePriv();normalize()}
@@ -562,28 +694,38 @@ async function afterLogin(){
 async function loadOrgData(){
   setStore('','Загрузка…');
   const pre=LEGACY?'':ORG+':';
-  const{data:raw,error}=LEGACY?await SB.from('docs').select('path,data'):await SB.from('docs').select('path,data').like('path',pre+'%');
-  const data=(raw||[]).filter(r=>LEGACY?!r.path.includes(':'):true).map(r=>({path:r.path.slice(pre.length),data:r.data}));
+  let raw,error;
+  if(!LEGACY){({data:raw,error}=await SB.from('docs').select('path,data,version').like('path',pre+'%'));
+    VER_OK=!error;if(error&&/version/i.test(error.message||''))({data:raw,error}=await SB.from('docs').select('path,data').like('path',pre+'%'))}
+  else({data:raw,error}=await SB.from('docs').select('path,data'));
+  if(VER_OK){const t=await SB.rpc('save_doc',{p:'__probe__',d:null,base:0});if(t.error&&/save_doc|PGRST202|function/i.test(t.error.message||''))VER_OK=false}
+  const data=(raw||[]).filter(r=>LEGACY?!r.path.includes(':'):true).map(r=>({path:r.path.slice(pre.length),data:r.data,version:r.version}));
   if(error){setStore('warn','Ошибка базы');LOGIN_ERR='Не удалось прочитать базу: '+error.message;AUTHED=false;render();return}
   S.cfg={tags:[],doctors:[],assistants:[],clinics:[]};S.avail={};S.months={};S.pub={};S.offers={};PRIV={doctors:{},assistants:{}};
   const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
   data.forEach(r=>{if(r.path!=='cfg/main')applyDoc(r.path,r.data)});normalize();
+  Store.sv={};Store.base={};if(VER_OK)data.forEach(r=>{Store.sv[r.path]=r.version;Store.base[r.path]=cl0(Store.body(r.path)??undefined)});
   AUTHED=true;LOGIN_ERR='';
   // перенос служебных полей из общего документа в закрытый (один раз)
   if(isAdmin()&&cfgRow&&((cfgRow.data.doctors||[]).some(d=>d.prio||d.block)||(cfgRow.data.assistants||[]).some(a=>PRIV_A.some(k=>a[k]!==undefined))))markCfg();
   if(!isAdmin())UI.rtab=UI.rtab||'mine';
   MISS.clear();loadPeople();
   if(!PEOPLE_T&&isAdmin())PEOPLE_T=setInterval(()=>{if(document.visibilityState==='visible')loadPeople()},60000);
-  if(LIVE)return setStore('on',isAdmin()?'Сохраняется в базе':'Подключено'),render();
+  if(LIVE){startPresence();return setStore('on',isAdmin()?'Сохраняется в базе':'Подключено'),render()}
   LIVE=true;
   SB.channel('docs-live').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
     const full=(p.new&&p.new.path)||(p.old&&p.old.path);if(!full)return;
     if(LEGACY?full.includes(':'):!full.startsWith(ORG+':'))return;
     const path=LEGACY?full:full.slice(ORG.length+1);if(Store.dirty.has(path))return;
     if(DEMO){DEMO.missed=true;return}
+    if(VER_OK){const v=p.new&&p.new.version;
+      if(p.eventType==='DELETE'){removeDoc(path);delete Store.sv[path];delete Store.base[path];renderSoft();return}
+      if(v!=null&&v<=(Store.sv[path]||0))return; // наше же сохранение или устаревшее
+      applyDoc(path,p.new.data);Store.sv[path]=v;Store.base[path]=cl0(Store.body(path)??undefined);renderSoft();return}
     if(p.eventType!=='DELETE'&&(Store.sent[path]||[]).includes(canon(p.new.data)))return; // это наше же сохранение
     if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
-  }).subscribe();
+  }).subscribe(st=>{if(st==='SUBSCRIBED'&&LIVE_READY)resync();LIVE_READY=true});
+  startPresence();
   setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();maybeTour();
 }
 const pwField=(id,label,ac)=>`<label class="f">${label}<span class="pw"><input type="password" id="${id}" autocomplete="${ac}" required><button type="button" class="eye" data-act="pw-eye" data-v="${id}" aria-label="Показать пароль" title="Показать пароль"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>`;
@@ -665,6 +807,7 @@ function shiftSig(){const role=ROLE(),card=myCard(),f=role==='assistant'?'assist
     m[d+'|'+cl.id+'|'+ch+'|'+en.shift+'|'+other]=`${fmt(d)} ${WD[wdOf(d)].toLowerCase()} · ${shiftTime(en.shift)} · ${cl.name}, кресло ${ch+1} · ${other}`});return m}
 function bellItems(){
   const it=[];if(!SUPA_ON||!AUTHED)return it;
+  CONFLICTS.forEach(c=>it.push({k:'cfl',t:c.t,s:c.s,warn:true}));
   if(isAdmin()){
     const pend=MEMBERS.filter(u=>u.role==='pending');
     if(pend.length)it.push({k:'pend',t:`Новые заявки: ${pend.length}`,s:pend.map(u=>u.name||u.login).join(', '),go:'users',stay:true});
@@ -694,7 +837,7 @@ function openBell(){
       body:it.length?it.map((x,i)=>`<button class="cand ${x.warn?'bwarn':''}" data-act="bell-go" data-i="${i}"><span><span class="nm">${esc(x.t)}</span><br><span class="why">${esc(x.s||'')}</span></span></button>`).join(''):'<p class="sub">Новых уведомлений нет.</p>',
       foot:`${it.some(x=>!x.stay)?'<button class="btn" data-act="bell-read">Отметить прочитанными</button>':''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}});
 }
-function markRead(){if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s]);
+function markRead(){CONFLICTS=[];if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s]);
     const so=new Set(getSeen('offers')||[]);callItems().forEach(it=>offersFor(it.eid).forEach(a=>so.add(a.id+':'+it.eid)));setSeen('offers',[...so])}else setSeen('shifts',Object.keys(shiftSig()));updateBell()}
 ACT_LATE.push(()=>{
   ACT['bell-read']=()=>{markRead();M.refresh()};
@@ -910,7 +1053,7 @@ function entryWarn(date,en){
 }
 
 /* ---------- render ---------- */
-function render(){renderMain();try{updateBell()}catch(e){}setHdr();document.body.classList.toggle('has-box',!!document.querySelector('#main .scrollbox'))}
+function render(){renderMain();try{updateBell()}catch(e){}try{trackPresence();updatePresence()}catch(e){}setHdr();document.body.classList.toggle('has-box',!!document.querySelector('#main .scrollbox'))}
 function setHdr(){const t=document.querySelector('.top');if(t)document.documentElement.style.setProperty('--hdr',t.offsetHeight+'px')}
 window.addEventListener('resize',setHdr);
 function renderMain(){
@@ -1024,6 +1167,7 @@ function viewBoard(){
   const unp=editing()&&SUPA_ON?unpubDays():[];
   return`${isAdmin()?exampleBanner()+schedHead():'<div><h1>Общий график</h1><p class="sub">Только просмотр. Ваши смены выделены.</p></div>'}
   ${isAdmin()&&usePub()?`<div class="note info">Так расписание видят сотрудники${S.cfg.publishedAt?' · последняя публикация '+esc(S.cfg.publishedAt):''}. Менять его — во вкладке «Редактирование», потом «Опубликовать».</div>`:''}
+  ${editing()&&SUPA_ON?'<div class="note info" id="peerNote" hidden></div>':''}
   ${unp.length?`<div class="note">Не опубликовано изменений: ${unp.length} дн. (${unp.slice(0,6).map(fmt).join(', ')}${unp.length>6?'…':''}). Сотрудники пока видят прежний вариант.<span class="spacer"></span><button class="btn sm primary" data-act="publish">Опубликовать</button></div>`:''}
   <div class="toolbar">
     <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
@@ -1126,7 +1270,7 @@ const M={open:false,fn:null,wide:false,
   close(){this.open=false;this.fn=null;$('#modalRoot').innerHTML='';render()}
 };
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&M.open)M.close()});
-function toast(t){const r=$('#toastRoot');r.innerHTML=`<div class="toast" role="status">${esc(t)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',3600)}
+function toast(t,ms){const r=$('#toastRoot');r.innerHTML=`<div class="toast" role="status">${esc(t)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',ms||3600)}
 
 function tagPicker(sel,key){
   return`<div class="pick-tags tags">${S.cfg.tags.slice().sort(byName).map(t=>`<button type="button" class="tag" data-act="tg" data-k="${key}" data-v="${t.id}" aria-pressed="${sel.includes(t.id)}">${esc(t.name)}</button>`).join('')||'<span class="sub">Навыков пока нет — создайте первый.</span>'}</div>
