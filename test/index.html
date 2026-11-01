@@ -364,6 +364,21 @@ body.has-box .top{position:static}
 .presence .ppt{margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:700px){.presence .ppt{display:none}}
 .netbar{position:fixed;left:0;right:0;top:0;z-index:58;background:var(--bad);color:#FFFFFF;font-weight:700;font-size:13px;text-align:center;padding:calc(6px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
+body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!important}
+#rail .ra,.board .as:not(.empty),.tpl .tcell .e{cursor:grab;-webkit-touch-callout:none}
+.dragghost{position:fixed;z-index:80;pointer-events:none;transform:translate(14px,12px);background:var(--ink);color:var(--bg);padding:6px 11px;border-radius:9px;font-weight:600;font-size:13px;box-shadow:0 8px 22px rgb(0 0 0/.3);white-space:nowrap}
+.board .ent.d-ok{outline:2px solid var(--ok);background:var(--ok-soft)}
+.board .ent.d-warn{outline:2px dashed var(--warn)}
+.board .ent.d-bad{opacity:.4}
+.board .ent.d-src{outline:2px dashed var(--muted);opacity:.6}
+.board .ent.dover{box-shadow:0 0 0 3px var(--accent)!important;opacity:1}
+.board td.c.d-okc,.tpl td.d-okc{background:color-mix(in srgb,var(--ok-soft) 70%,transparent)}
+.board td.c.d-badc,.tpl td.d-badc{background:color-mix(in srgb,var(--bad-soft) 70%,transparent)}
+.board td.c.dover,.tpl td.dover{box-shadow:inset 0 0 0 3px var(--accent)}
+#rail.d-rm{outline:2px dashed var(--bad);outline-offset:-2px}
+#rail.d-rm.dover{background:var(--bad-soft)}
+.cal{touch-action:none}
+.amap td.ac{cursor:cell}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -391,7 +406,7 @@ body.has-box .top{position:static}
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 20:11'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 20:23'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -1083,7 +1098,7 @@ function cellHTML(d,cl,ch){
   arr.forEach(en=>{
     const a=asById(en.assistantId);const wr=a?entryWarn(d,en):'';const miss=MISS.get(en.id);
     const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
-    h+=`<div class="ent"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))} — изменить смену">${esc(nm(docName(en.doctorId)))}</button></div>`;
+    h+=`<div class="ent" data-d="${d}" data-e="${en.id}"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))} — изменить смену">${esc(nm(docName(en.doctorId)))}</button></div>`;
     if(tg.length&&st.showTags)h+=`<div class="tags">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`;
     h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm(a.name))}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
        :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${XS()?(of?`+ ${of}`:miss?'нет':'+'):of?`+ ассистент · откликов: ${of}`:miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
@@ -1126,7 +1141,7 @@ function boardH(dates,cls){
     h+=`<tr class="cl"><td colspan="${dates.length+1}"><span style="position:sticky;left:10px">${esc(cl.name)}</span></td></tr>`;
     for(let ch=0;ch<cl.chairs;ch++){
       h+=`<tr><th class="lab">Кресло ${ch+1}</th>`;
-      dates.forEach(d=>{h+=`<td class="c ${wdOf(d)>4?'we':''}">${cellHTML(d,cl,ch)}</td>`});
+      dates.forEach(d=>{h+=`<td class="c ${wdOf(d)>4?'we':''}" data-d="${d}" data-c="${cl.id}" data-ch="${ch}">${cellHTML(d,cl,ch)}</td>`});
       h+=`</tr>`;
     }
   });
@@ -1141,7 +1156,7 @@ function boardV(dates,cls){
   h+=`</tr></thead><tbody>`;
   dates.forEach(d=>{const w=wdOf(d);
     h+=`<tr class="${w>4?'we':''} ${d===TODAY?'today':''}"><th class="lab dl"><div class="d num">${fmt(d)}</div><div class="${w>4?'wer':'sub'}">${WD[w]}</div>${sdBadge(d)}</th>`;
-    cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<td class="c ${w>4?'we':''} ${ch===0?'first':''}">${cellHTML(d,cl,ch)}</td>`});
+    cls.forEach(cl=>{for(let ch=0;ch<cl.chairs;ch++)h+=`<td class="c ${w>4?'we':''} ${ch===0?'first':''}" data-d="${d}" data-c="${cl.id}" data-ch="${ch}">${cellHTML(d,cl,ch)}</td>`});
     h+=`</tr>`;
   });
   return h+`</tbody></table>`;
@@ -1163,7 +1178,7 @@ function viewBoard(){
     <div class="list">${S.cfg.assistants.slice().sort(byName).map(a=>{
       const av=S.avail[a.id]||{};const days=range(UI.from,UI.to).filter(d=>av[d]).length;
       return`<button class="ra" data-act="avail" data-a="${a.id}"><span class="nm">${esc(a.name)}</span><span class="meta num">${days?`${days} дн. может`:'<span class="z">даты не отмечены</span>'}<br>${load[a.id]||0} смен назначено${st.rates&&cost[a.id]?' · '+rub(cost[a.id]):''}</span></button>`}).join('')||`<div class="foot">Ассистентов пока нет — добавьте их в разделе «Ассистенты».</div>`}</div>
-    <div class="foot"><button class="btn sm" data-act="rail-add">+ Добавить ассистента</button><br><br>Нажмите на ассистента, чтобы отметить, в какие дни он может работать.</div></details>`;
+    <div class="foot"><button class="btn sm" data-act="rail-add">+ Добавить ассистента</button><br><br>Нажмите на ассистента, чтобы отметить, в какие дни он может работать. <b>Перетащите</b> его на смену, чтобы поставить.</div></details>`;
   const unp=editing()&&SUPA_ON?unpubDays():[];
   return`${isAdmin()?exampleBanner()+schedHead():'<div><h1>Общий график</h1><p class="sub">Только просмотр. Ваши смены выделены.</p></div>'}
   ${isAdmin()&&usePub()?`<div class="note info">Так расписание видят сотрудники${S.cfg.publishedAt?' · последняя публикация '+esc(S.cfg.publishedAt):''}. Менять его — во вкладке «Редактирование», потом «Опубликовать».</div>`:''}
@@ -1185,22 +1200,24 @@ function viewBoard(){
   ${has?'<p class="sub hint" style="margin:0">Прокрутка вбок: колесо мыши над строкой с датами или Shift + колесо.</p>':''}`;
 }
 function viewAvailMap(){
+  AV.refresh=()=>render();
   const dates=range(UI.from,UI.to);const as=S.cfg.assistants.slice().sort(byName);
   const sd=dates.map(supplyDemand);
   let h=`<table class="board amap ${densCls()}" style="${zoomCss()}"><thead><tr><th class="lab">Ассистент</th>${dates.map(d=>{const w=wdOf(d);return`<th class="${w>4?'we':''} ${d===TODAY?'today':''}"><div class="d num">${fmt(d)}</div><div class="sub">${WD[w]}</div></th>`}).join('')}</tr>
     <tr class="sumr"><th class="lab">Утро<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.am,x.nAm)}">${x.am}${x.nAm?' / '+x.nAm:''}</td>`).join('')}</tr>
     <tr class="sumr"><th class="lab">Вечер<br><span class="sub">могут / нужно</span></th>${sd.map(x=>`<td class="${lvl(x.pm,x.nPm)}">${x.pm}${x.nPm?' / '+x.nPm:''}</td>`).join('')}</tr></thead><tbody>`;
   as.forEach(a=>{const av=S.avail[a.id]||{};const n=dates.filter(d=>av[d]).length;
-    h+=`<tr><th class="lab"><button class="aname" data-act="avail" data-a="${a.id}">${esc(a.name)}</button><span class="sub num">${n?n+' дн.':'не отмечено'}</span></th>${dates.map(d=>{const v=av[d];return`<td class="ac ${v?'v-'+v:''}">${v?SH[v].s:''}</td>`}).join('')}</tr>`});
+    h+=`<tr><th class="lab"><button class="aname" data-act="avail" data-a="${a.id}">${esc(a.name)}</button><span class="sub num">${n?n+' дн.':'не отмечено'}</span></th>${dates.map(d=>{const v=av[d];return`<td class="ac ${v?'v-'+v:''}" data-a="${a.id}" data-d="${d}">${v?SH[v].s:''}</td>`}).join('')}</tr>`});
   h+=`</tbody></table>`;
   return`${schedHead()}
   <div class="toolbar"><div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
     <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
     <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>${zoomCtl()}<span class="spacer"></span>
     ${SUPA_ON?'<button class="btn" data-act="collect">Сбор дат</button>':''}<button class="btn" data-act="rail-add">+ Ассистент</button></div>
+  <div class="row" style="gap:8px"><span class="sub">Отметить мышью:</span><div class="brush">${['day','am','pm'].map(k=>`<button data-act="av-brush" data-v="${k}" aria-pressed="${AV.brush===k}">${shChip(k)} ${SH[k].l}</button>`).join('')}<button data-act="av-brush" data-v="none" aria-pressed="${AV.brush==='none'}">Стереть</button></div><span class="sub">— зажмите и проведите по строке ассистента</span></div>
   <div class="legend"><span><i class="lg ok2"></i> хватает с запасом</span><span><i class="lg tight2"></i> впритык</span><span><i class="lg bad2"></i> не хватает</span><span>${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span><span>«нужно» — смены врачей в черновике графика</span></div>
   ${as.length?`<div class="boardwrap scrollbox">${h}</div>`:'<div class="boardwrap"><div class="empty-board"><h2>Ассистентов пока нет</h2><button class="btn primary" data-act="rail-add">Добавить ассистента</button></div></div>'}
-  <p class="sub" style="margin:0">Нажмите на имя ассистента, чтобы изменить его даты.</p>`;
+  <p class="sub" style="margin:0">Нажмите на имя ассистента, чтобы открыть его календарь, или отмечайте дни прямо в таблице.</p>`;
 }
 function viewWeek(){
   const cls=S.cfg.clinics;
@@ -1214,7 +1231,7 @@ function viewWeek(){
       t+=`<tr><th class="lab" style="position:sticky;left:0;background:var(--surface);padding:8px 10px;font-size:12px;color:var(--muted);text-align:left">Кресло ${ch+1}</th>`;
       for(let w=0;w<7;w++){
         const arr=cl.template[ch+'-'+w]||[];
-        t+=`<td class="c"><button class="tcell" data-act="tpl" data-ch="${ch}" data-w="${w}">${arr.length?arr.map(e=>`<span class="e">${shChip(e.shift)}<span>${esc(docName(e.doctorId))}</span></span>`).join(''):'<span class="plus">+ врач</span>'}</button></td>`;
+        t+=`<td class="c"><button class="tcell" data-act="tpl" data-ch="${ch}" data-w="${w}">${arr.length?arr.map((e,i)=>`<span class="e" data-i="${i}">${shChip(e.shift)}<span>${esc(docName(e.doctorId))}</span></span>`).join(''):'<span class="plus">+ врач</span>'}</button></td>`;
       }
       t+=`</tr>`;
     }
@@ -2062,6 +2079,7 @@ const TOURS={
     {act:1,sel:'.as.empty',t:'Поставьте ассистента',x:'Нажмите «+ ассистент» под врачом.',wait:()=>M.open},
     {sel:'.modal .mb',t:'Кого можно поставить',x:'Ассистенты разбиты на группы: «Приоритет» — приоритетные для этого врача; «Могут в эту смену» — отметили этот день и свободны; «Заняты у другого врача» — с указанием, где; «Отметили другое время» — например, только утро; «Не отметили этот день»; «Точно не ставить». Справа — сколько смен у человека в периоде, а «нет навыка» подскажет, если навыка не хватает.'},
     {act:1,sel:'.modal .mb',t:'Выберите ассистента',x:'Нажмите на имя — лучше из группы «Могут в эту смену». Поставить можно и из любой другой группы: тогда смена подсветится жёлтым как замечание.',wait:()=>!M.open},
+    {sel:'#rail',t:'Перетаскивание мышью',x:'Ассистента можно просто перетащить из списка справа на смену: пока тащите, подходящие смены подсвечиваются зелёным, неподходящие — жёлтым, а занятые бледнеют. Поставленного ассистента можно перетащить в другую смену (если там кто-то есть, они поменяются) или вернуть в список, чтобы снять. Смену врача можно перетащить в другое кресло или день, а в базовой неделе — врача между ячейками. На телефоне — долгим нажатием.'},
     {sel:'.sd,.boardwrap thead',t:'Хватает ли людей',x:'Под каждой датой — сколько ассистентов могут и сколько нужно. Зелёный — с запасом, жёлтый — впритык, красный — не хватает. Наведите мышь — увидите отдельно утро и вечер.'},
     {act:1,sel:'.ra',t:'Даты ассистента из графика',x:'В панели справа — все ассистенты: сколько дней отметили и сколько смен назначено. Нажмите на любого — откроется его календарь.',wait:()=>!!document.querySelector('.modal .cal')},
     {act:1,sel:'.modal .mf [data-act=close]',t:'Закройте календарь',x:'Здесь можно поправить даты за ассистента — например, если он сообщил о болезни. Закройте окно.',wait:()=>!M.open},
@@ -2257,6 +2275,123 @@ function openPwChange(){
 }
 ACT_LATE.push(()=>{ACT['pw-change']=()=>{M.close();openPwChange()}});
 if(ENV==='test'){const r=document.createElement('div');r.className='envtag';r.textContent='ТЕСТОВАЯ ВЕРСИЯ · отдельная база, рабочие данные не затрагиваются';document.body.appendChild(r);document.title='ТЕСТ · '+document.title}
+/* ---------- перетаскивание мышью (и долгим нажатием на телефоне) ---------- */
+let DRAG=null,DRAG_JUST=false,DPEND=null;
+const justDragged=()=>{DRAG_JUST=true;setTimeout(()=>DRAG_JUST=false,80)};
+document.addEventListener('click',e=>{if(DRAG_JUST){e.preventDefault();e.stopPropagation()}},true);
+function dragInfo(el){
+  if(!el||!el.closest||TOUR&&TOUR.busy)return null;
+  if(UI.tab==='sched'&&editing()&&UI.mode==='board'){
+    const ra=el.closest('#rail .ra[data-a]');if(ra)return{type:'as',aid:ra.dataset.a,from:null,label:asById(ra.dataset.a)?.name||''};
+    const as=el.closest('.board .as[data-e]');if(as){const f=findEntry(as.dataset.d,as.dataset.e);return f&&f.en.assistantId?{type:'as',aid:f.en.assistantId,from:{d:as.dataset.d,e:as.dataset.e},label:asById(f.en.assistantId)?.name||''}:null}
+    const doc=el.closest('.board .ent .doc');if(doc){const f=findEntry(doc.dataset.d,doc.dataset.e);return f?{type:'ent',d:doc.dataset.d,e:doc.dataset.e,label:docName(f.en.doctorId)+' · '+fmt(doc.dataset.d)}:null}
+  }
+  if(UI.tab==='sched'&&UI.mode==='week'&&isAdmin()){const te=el.closest('.tpl .tcell .e[data-i]');if(te){const c=te.closest('.tcell');return{type:'tpl',ch:+c.dataset.ch,w:+c.dataset.w,i:+te.dataset.i,label:te.textContent.trim()}}}
+  return null;
+}
+function busyEx(date,ids){const m={};forEntries(date,(en,cl)=>{if(ids.includes(en.id)||!en.assistantId)return;(m[en.assistantId]=m[en.assistantId]||[]).push({shift:en.shift,label:cl.name+', '+docName(en.doctorId)})});return m}
+function dragMarks(){
+  const i=DRAG.info;
+  if(i.type==='as'){
+    document.querySelectorAll('.board .ent[data-e]').forEach(el=>{const d=el.dataset.d,e=el.dataset.e;const f=findEntry(d,e);if(!f)return;
+      if(i.from&&i.from.e===e){el.classList.add('d-src');return}
+      const ex=[e];if(i.from&&i.from.d===d)ex.push(i.from.e);
+      const c=classify(d,f.en,busyEx(d,ex),{}).find(x=>x.a.id===i.aid);if(!c)return;
+      el.classList.add(c.group==='never'||c.sub==='busy'?'d-bad':(c.group==='prio'||c.group==='can')&&!c.missing.length?'d-ok':'d-warn')});
+    if(i.from){const r=$('#rail');if(r)r.classList.add('d-rm')}
+  }
+  if(i.type==='ent'){const f=findEntry(i.d,i.e);
+    document.querySelectorAll('.board td.c[data-d]').forEach(td=>{const arr=cellArr(td.dataset.d,td.dataset.c,+td.dataset.ch,false).filter(x=>x.id!==i.e);
+      td.classList.add(arr.some(x=>overlap(x.shift,f.en.shift))?'d-badc':'d-okc')})}
+  if(i.type==='tpl'){const cl=clById(UI.clinic);const it=(cl.template[i.ch+'-'+i.w]||[])[i.i];
+    document.querySelectorAll('.tpl .tcell').forEach(b=>{const ch=+b.dataset.ch,w=+b.dataset.w;const arr=(cl.template[ch+'-'+w]||[]).filter((x,k)=>!(ch===i.ch&&w===i.w&&k===i.i));
+      b.closest('td').classList.add(arr.length>=2||arr.some(x=>overlap(x.shift,it.shift))?'d-badc':'d-okc')})}
+}
+function dragClear(){document.querySelectorAll('.d-ok,.d-warn,.d-bad,.d-src,.d-okc,.d-badc,.d-rm,.dover').forEach(el=>el.classList.remove('d-ok','d-warn','d-bad','d-src','d-okc','d-badc','d-rm','dover'))}
+function dropTarget(x,y){const el=document.elementFromPoint(x,y);if(!el)return null;const i=DRAG.info;
+  if(i.type==='as'){const ent=el.closest('.board .ent[data-e]');if(ent)return ent;if(i.from&&(el.closest('#rail')||!el.closest('.boardwrap')))return $('#rail')||document.body;return null}
+  if(i.type==='ent')return el.closest('.board td.c[data-d]');
+  if(i.type==='tpl'){const b=el.closest('.tpl .tcell');return b?b.closest('td'):null}
+}
+function dragStart(info,x,y){
+  DRAG={info,x,y,over:null};document.body.classList.add('dragging');
+  const g=document.createElement('div');g.className='dragghost';g.textContent=info.label||'';document.body.appendChild(g);DRAG.g=g;
+  dragMarks();dragMove(x,y);
+  DRAG.timer=setInterval(()=>autoScroll(DRAG.x,DRAG.y),30);
+  try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}
+}
+function dragMove(x,y){if(!DRAG)return;DRAG.x=x;DRAG.y=y;DRAG.g.style.left=x+'px';DRAG.g.style.top=y+'px';
+  const t=dropTarget(x,y);if(t!==DRAG.over){if(DRAG.over)DRAG.over.classList.remove('dover');DRAG.over=t;if(t&&t!==document.body)t.classList.add('dover')}}
+function autoScroll(x,y){const box=document.querySelector('.scrollbox');const E=46,V=14;
+  if(box){const r=box.getBoundingClientRect();if(x>r.left&&x<r.right&&y>r.top&&y<r.bottom){
+    const dx=x<r.left+E?-V:x>r.right-E?V:0,dy=y<r.top+E?-V:y>r.bottom-E?V:0;if(dx||dy){box.scrollBy(dx,dy);dragMove(x,y)}}}
+  if(y<40)window.scrollBy(0,-V);else if(y>innerHeight-40)window.scrollBy(0,V)}
+function dragEnd(drop){if(!DRAG)return;const d=DRAG;DRAG=null;clearInterval(d.timer);d.g.remove();document.body.classList.remove('dragging');
+  const t=d.over;dragClear();justDragged();if(drop&&t)doDrop(d.info,t)}
+function doDrop(i,t){
+  if(i.type==='as'){
+    if(t.classList&&t.classList.contains('ent')){const d=t.dataset.d,e=t.dataset.e;const f=findEntry(d,e);if(!f)return;
+      if(i.from&&i.from.e===e)return;
+      const nm=asById(i.aid)?.name||'';
+      if(i.from){const src=findEntry(i.from.d,i.from.e);const prev=f.en.assistantId;f.en.assistantId=i.aid;if(src)src.en.assistantId=prev||null;MISS.delete(e);MISS.delete(i.from.e);
+        markMonth(ymOf(d));if(ymOf(i.from.d)!==ymOf(d))markMonth(ymOf(i.from.d));toast(prev?`${nm} и ${asById(prev)?.name||''} поменялись сменами`:`${nm} перенесён(а) на ${fmt(d)}, ${docName(f.en.doctorId)}`)}
+      else{f.en.assistantId=i.aid;MISS.delete(e);markMonth(ymOf(d));toast(`${nm} → ${fmt(d)}, ${docName(f.en.doctorId)}`)}
+      pruneCalls();render();return}
+    if(i.from){const src=findEntry(i.from.d,i.from.e);if(src){src.en.assistantId=null;markMonth(ymOf(i.from.d));toast(`${asById(i.aid)?.name||'Ассистент'} снят(а) со смены ${fmt(i.from.d)}`);render()}}
+    return}
+  if(i.type==='ent'){const d2=t.dataset.d,c2=t.dataset.c,ch2=+t.dataset.ch;const f=findEntry(i.d,i.e);if(!f)return;
+    if(d2===i.d&&c2===f.cl.id&&ch2===f.ch)return;
+    const tarr=cellArr(d2,c2,ch2,true);if(tarr.some(x=>x.id!==i.e&&overlap(x.shift,f.en.shift))){toast('В этом кресле в это время уже есть врач');render();return}
+    const sarr=cellArr(i.d,f.cl.id,f.ch,false);sarr.splice(sarr.indexOf(f.en),1);
+    let msg=`${docName(f.en.doctorId)}: смена перенесена`;if(d2!==i.d&&f.en.assistantId){msg+=`, ассистент снят — другой день`;f.en.assistantId=null}
+    tarr.push(f.en);MISS.delete(f.en.id);markMonth(ymOf(i.d));if(ymOf(d2)!==ymOf(i.d))markMonth(ymOf(d2));pruneCalls();toast(msg);render();return}
+  if(i.type==='tpl'){const b=t.querySelector('.tcell');if(!b)return;const ch=+b.dataset.ch,w=+b.dataset.w;if(ch===i.ch&&w===i.w)return;
+    const cl=clById(UI.clinic);const sk=i.ch+'-'+i.w,tk=ch+'-'+w;const src=cl.template[sk]||[];const it=src[i.i];if(!it)return;const tarr=cl.template[tk]||[];
+    if(tarr.length>=2||tarr.some(x=>overlap(x.shift,it.shift))){toast('В этом кресле в это время уже есть врач');render();return}
+    src.splice(i.i,1);if(!src.length)delete cl.template[sk];cl.template[tk]=tarr.concat([it]);markCfg();toast(`${docName(it.doctorId)} → ${WD[w]}, кресло ${ch+1}`);render()}
+}
+// мышь
+document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'||e.button!==0||PAINT)return;const info=dragInfo(e.target);if(!info)return;DPEND={info,x:e.clientX,y:e.clientY};e.preventDefault()});
+document.addEventListener('pointermove',e=>{if(e.pointerType==='touch')return;
+  if(DPEND&&!DRAG){if(Math.hypot(e.clientX-DPEND.x,e.clientY-DPEND.y)>6){dragStart(DPEND.info,e.clientX,e.clientY);DPEND=null}}
+  else if(DRAG){dragMove(e.clientX,e.clientY);e.preventDefault()}});
+document.addEventListener('pointerup',e=>{if(e.pointerType==='touch')return;DPEND=null;if(DRAG)dragEnd(true)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&DRAG){dragEnd(false)}});
+// палец: долгое нажатие
+let TP=null;
+document.addEventListener('touchstart',e=>{if(e.touches.length!==1||PAINT)return;const t=e.touches[0];const info=dragInfo(e.target);if(!info)return;
+  TP={x:t.clientX,y:t.clientY,info,timer:setTimeout(()=>{if(TP){dragStart(TP.info,TP.x,TP.y);TP.started=true}},380)}},{passive:true});
+document.addEventListener('touchmove',e=>{const t=e.touches[0];if(DRAG){e.preventDefault();dragMove(t.clientX,t.clientY);return}
+  if(TP&&Math.hypot(t.clientX-TP.x,t.clientY-TP.y)>10){clearTimeout(TP.timer);TP=null}},{passive:false});
+document.addEventListener('touchend',e=>{if(TP){clearTimeout(TP.timer);TP=null}if(DRAG){e.preventDefault();dragEnd(true)}},{passive:false});
+document.addEventListener('touchcancel',()=>{if(TP){clearTimeout(TP.timer);TP=null}if(DRAG)dragEnd(false)});
+document.addEventListener('contextmenu',e=>{if(DRAG||TP)e.preventDefault()});
+
+/* ---------- отметка дат «мазком» ---------- */
+let PAINT=null;
+function paintSet(el,val){el.classList.remove('day','am','pm','v-day','v-am','v-pm');
+  if(el.classList.contains('dd')){if(val!=='none')el.classList.add(val);const sm=el.querySelector('small');if(sm)sm.remove();if(val!=='none'){const x=document.createElement('small');x.textContent=SH[val].s;el.appendChild(x)}}
+  else{if(val!=='none')el.classList.add('v-'+val);el.textContent=val!=='none'?SH[val].s:''}}
+function paintCell(el){if(!PAINT)return;const ds=el.dataset.v||el.dataset.d;const aid=PAINT.aid;if(PAINT.done.has(ds))return;
+  if(PAINT.kind==='cal'&&!avEditable(ds))return;
+  PAINT.done.add(ds);const prev=AV.aid;AV.aid=aid;avSet(ds,PAINT.val);AV.aid=prev;paintSet(el,PAINT.val)}
+document.addEventListener('pointerdown',e=>{if(e.button>0||DRAG)return;
+  const dd=e.target.closest&&e.target.closest('.cal .dd[data-act=av-day]');
+  if(dd&&!dd.disabled){const ds=dd.dataset.v;if(!avEditable(ds))return;const cur=(S.avail[AV.aid]||{})[ds];
+    PAINT={kind:'cal',aid:AV.aid,val:cur===AV.brush?'none':AV.brush,done:new Set()};paintCell(dd);e.preventDefault();return}
+  const ac=e.target.closest&&e.target.closest('.amap td.ac[data-a]');
+  if(ac&&isAdmin()&&e.pointerType!=='touch'){const aid=ac.dataset.a,ds=ac.dataset.d;const cur=(S.avail[aid]||{})[ds];
+    PAINT={kind:'amap',aid,val:cur===AV.brush?'none':AV.brush,done:new Set()};paintCell(ac);e.preventDefault()}});
+// на телефоне в «Доступности» — отметка касанием (чтобы прокрутка пальцем ничего не отмечала)
+let LAST_PT='mouse';document.addEventListener('pointerdown',e=>{LAST_PT=e.pointerType},true);
+document.addEventListener('click',e=>{if(LAST_PT!=='touch'||DRAG_JUST)return;const ac=e.target.closest&&e.target.closest('.amap td.ac[data-a]');if(!ac||!isAdmin())return;
+  const aid=ac.dataset.a,ds=ac.dataset.d;const cur=(S.avail[aid]||{})[ds];const prev=AV.aid;AV.aid=aid;avSet(ds,cur===AV.brush?'none':AV.brush);AV.aid=prev;markAvail(aid);render()});
+document.addEventListener('pointermove',e=>{if(!PAINT)return;const el=document.elementFromPoint(e.clientX,e.clientY);if(!el)return;
+  if(PAINT.kind==='cal'){const dd=el.closest('.cal .dd[data-act=av-day]');if(dd&&!dd.disabled)paintCell(dd)}
+  else{const ac=el.closest('.amap td.ac[data-a]');if(ac&&ac.dataset.a===PAINT.aid)paintCell(ac)}});
+const paintEnd=()=>{if(!PAINT)return;const p=PAINT;PAINT=null;if(p.done.size){markAvail(p.aid);justDragged();if(p.kind==='cal')AV.refresh();else render()}};
+document.addEventListener('pointerup',paintEnd);document.addEventListener('pointercancel',paintEnd);
+
 ACT_LATE.forEach(f=>f());
 render();
 initStore();
