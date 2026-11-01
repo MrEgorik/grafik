@@ -1,7 +1,12 @@
 // Посредник «График ассистентов» → Supabase для Yandex Cloud Functions (Node.js 18 или новее).
 // Пересылает запросы программы в базу Supabase, когда она недоступна напрямую.
 // Принимает только запросы к базе (/rest/v1/ и /auth/v1/) и только с сайта программы.
-const SUPA = 'https://buynizqyabifntjqxgrx.supabase.co';
+// Базы, в которые разрешено пересылать: рабочая и тестовая.
+const BASES = {
+  buynizqyabifntjqxgrx: 'https://buynizqyabifntjqxgrx.supabase.co', // рабочая
+  qrlzktxrmhpdlbjmgxxy: 'https://qrlzktxrmhpdlbjmgxxy.supabase.co', // тестовая
+};
+const DEFAULT_BASE = 'buynizqyabifntjqxgrx';
 const ALLOW = ['https://mregorik.github.io'];
 const PASS_HEADERS = ['apikey', 'authorization', 'content-type', 'prefer', 'accept', 'accept-profile', 'content-profile', 'x-client-info', 'x-supabase-api-version'];
 
@@ -23,6 +28,8 @@ module.exports.handler = async (event) => {
     return { statusCode: 400, headers: cors, body: 'Bad request' };
   }
 
+  const SUPA = BASES[String(req.t || DEFAULT_BASE)];
+  if (!SUPA) return { statusCode: 400, headers: cors, body: 'Unknown base' };
   const path = String(req.u || '');
   if (!/^\/(rest|auth)\/v1\//.test(path)) return { statusCode: 400, headers: cors, body: 'Bad path' };
   const method = String(req.m || 'GET').toUpperCase();
