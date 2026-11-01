@@ -405,9 +405,9 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 
 <script>
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
-const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
+const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 20:54'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 00:06'; // заполняется при выкладке на GitHub
 const ENV=''; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -691,16 +691,39 @@ function applyDoc(path,data){const[col,id]=path.split('/');
   else if(col==='months')S.months[id]=clone(data.days||{});
   else if(col==='pub')S.pub[id]=clone(data.days||{})}
 function removeDoc(path){const[col,id]=path.split('/');if(col==='avail'){delete S.avail[id];delete S.offers[id]}else if(col==='months')delete S.months[id];else if(col==='pub')delete S.pub[id]}
+/* связь с базой через посредника в России */
+let VIA=null;
+const FORCE_ROUTE=(()=>{try{return new URLSearchParams(location.search).get('route')}catch(e){return null}})();
+// весь запрос упаковывается в один простой POST (без служебных запросов браузера), посредник пересылает его в Supabase
+async function proxyFetch(input,init){
+  init=init||{};const url=typeof input==='string'?input:input.url;
+  if(!SUPA.proxy||!url.startsWith(SUPA.url))return fetch(input,init);
+  const h={};new Headers(init.headers||(typeof input!=='string'?input.headers:{})).forEach((v,k)=>{h[k]=v});
+  let b=init.body;if(b!=null&&typeof b!=='string')b=await new Response(b).text();
+  return fetch(SUPA.proxy,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({t:(SUPA.url.match(/https:\/\/([a-z0-9]+)\./)||[])[1],m:init.method||'GET',u:url.slice(SUPA.url.length),h,b:b??null}),signal:init.signal});
+}
+async function pickRoute(tmo){
+  const check=f=>f(SUPA.url+'/auth/v1/health',{headers:{apikey:SUPA.key}}).then(r=>r.status<500?true:Promise.reject(new Error('down')));
+  if(FORCE_ROUTE==='proxy'&&SUPA.proxy){try{if(await tmo(check(proxyFetch),12000))return'proxy'}catch(e){}return null}
+  let pref=null;try{pref=localStorage.getItem('asst-route')}catch(e){}
+  const viaProxy=SUPA.proxy?check(proxyFetch).catch(()=>false):Promise.resolve(false);
+  try{if(await tmo(check(fetch),SUPA.proxy?(pref==='proxy'?2500:6000):10000))return'direct'}catch(e){}
+  try{if(await tmo(viaProxy,12000))return'proxy'}catch(e){}
+  return null;
+}
 async function initSupa(){
   Store.mode='supa';setStore('','Подключение…');
   const tmo=(p,ms)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),ms))]);
   let ok=false;for(const src of SB_LIBS){try{await tmo(loadLib(src),9000);ok=!!window.supabase;if(ok)break}catch(e){}}
   if(!ok){setStore('warn','Нет связи');LOGIN_ERR='Не загрузилась библиотека для связи с базой (jsdelivr.net / unpkg.com). Проверьте интернет. Если вы в России и интернет работает — возможно, эти адреса недоступны у вашего провайдера.';render();return}
-  // проверяем, отвечает ли сама база
-  try{const r=await tmo(fetch(SUPA.url+'/auth/v1/health',{headers:{apikey:SUPA.key}}),10000);if(!r.ok&&r.status>=500)throw new Error('down')}
+  // выбираем путь к базе: напрямую или через посредника в России
+  VIA=await pickRoute(tmo);
+  const sbOpts={auth:{persistSession:true,autoRefreshToken:true}};if(VIA==='proxy')sbOpts.global={fetch:proxyFetch};
+  if(VIA)try{localStorage.setItem('asst-route',VIA)}catch(e){}
+  try{if(!VIA)throw new Error('down')}
   catch(e){setStore('warn','Нет связи с базой');LOGIN_ERR='Не отвечает сервер базы данных (supabase.co). Если интернет работает — возможно, проект временно на паузе или адрес недоступен у вашего провайдера. Сообщите ответственному.';
-    SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});render();return}
-  SB=window.supabase.createClient(SUPA.url,SUPA.key,{auth:{persistSession:true,autoRefreshToken:true}});
+    SB=window.supabase.createClient(SUPA.url,SUPA.key,sbOpts);render();return}
+  SB=window.supabase.createClient(SUPA.url,SUPA.key,sbOpts);
   SB.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){AUTHED=false;PENDING=false;ME=null;setStore('warn','Не выполнен вход');render()}});
   const{data}=await SB.auth.getSession();
   if(INVITE){await loadInvite();
@@ -761,7 +784,7 @@ async function loadOrgData(){
     if(p.eventType==='DELETE'){removeDoc(path);delete RAWC[path]}else{applyDoc(path,p.new.data);RAWC[path]=canon(p.new.data)}renderSoft();
   }).subscribe(st=>{RT_OK=st==='SUBSCRIBED';if(st==='SUBSCRIBED'&&LIVE_READY)resync(true);if(st==='SUBSCRIBED')LIVE_READY=true;if(st!=='SUBSCRIBED')console.warn('Живой канал:',st)});
   startPresence();
-  setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();maybeTour();
+  setStore('on',(isAdmin()?'Сохраняется в базе':'Подключено')+(VIA==='proxy'?' · через Россию':''));render();maybeTour();
 }
 const pwField=(id,label,ac)=>`<label class="f">${label}<span class="pw"><input type="password" id="${id}" autocomplete="${ac}" required><button type="button" class="eye" data-act="pw-eye" data-v="${id}" aria-label="Показать пароль" title="Показать пароль"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>`;
 const INVITE=(()=>{try{return new URLSearchParams(location.search).get('invite')}catch(e){return null}})();
