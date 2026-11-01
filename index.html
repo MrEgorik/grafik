@@ -379,6 +379,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 #rail.d-rm.dover{background:var(--bad-soft)}
 .cal{touch-action:none}
 .amap td.ac{cursor:cell}
+.btn.hasoff{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
 .warnlist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .warnlist li::marker{color:var(--warn)}
 .okline{color:var(--ok);font-weight:600}
@@ -406,7 +407,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://buynizqyabifntjqxgrx.supabase.co',key:'sb_publishable_4aDI96xiZIxwtN2D0JvRgw_gaFpmvOw'};
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 20:32'; // заполняется при выкладке на GitHub
+const BUILD='01.11.2026 20:54'; // заполняется при выкладке на GitHub
 const ENV=''; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -484,7 +485,7 @@ const Store={
     }
     if(this.mode==='supa'){
       const body=this.body(path);const prev=this.chains[path]||Promise.resolve();
-      if(body){const l=this.sent[path]=this.sent[path]||[];l.push(canon(body));if(l.length>8)l.shift()}
+      if(body){const l=this.sent[path]=this.sent[path]||[];l.push(canon(body));if(l.length>8)l.shift();RAWC[path]=canon(body)}else delete RAWC[path];
       this.chains[path]=prev.then(async()=>{
         if(!ORG&&!LEGACY)return;
         const r=body?await SB.from('docs').upsert({path:P(path),data:body,updated_at:new Date().toISOString()}):await SB.from('docs').delete().eq('path',P(path));
@@ -629,15 +630,33 @@ function tryResume(){if(!Store.pending.size){if(OFFLINE&&navigator.onLine)goOnli
 function showNet(){let b=$('#netBar');if(OFFLINE){if(!b){b=document.createElement('div');b.id='netBar';b.className='netbar';document.body.appendChild(b)}
   b.textContent='Нет связи с базой. Ваши изменения сохранятся автоматически, когда связь вернётся — не закрывайте вкладку.'}else if(b)b.remove()}
 // подтянуть свежие данные после обрыва связи или долгого простоя
-async function resync(){
-  if(!SB||!AUTHED||!VER_OK||DEMO||(!ORG&&!LEGACY))return;
-  const pre=ORG+':';const{data,error}=await SB.from('docs').select('path,data,version').like('path',pre+'%');if(error)return;
-  const seen=new Set();let ch=false;
-  (data||[]).forEach(r=>{const path=r.path.slice(pre.length);seen.add(path);if(Store.dirty.has(path))return;
-    if((Store.sv[path]||0)<r.version){applyDoc(path,r.data);Store.sv[path]=r.version;Store.base[path]=cl0(Store.body(path)??undefined);ch=true}});
-  Object.keys(Store.sv).forEach(path=>{if(!seen.has(path)&&!Store.dirty.has(path)){removeDoc(path);delete Store.sv[path];delete Store.base[path];ch=true}});
-  if(ch)renderSoft();
+// подтянуть свежие данные: после обрыва связи, долгого простоя и регулярно — на случай, если «живой» канал подвис
+const RAWC={};let RT_OK=false,RESYNC_BUSY=false;
+async function resync(full){
+  if(!SB||!AUTHED||DEMO||(!ORG&&!LEGACY)||RESYNC_BUSY)return;RESYNC_BUSY=true;
+  try{
+    const pre=LEGACY?'':ORG+':';const rel=p=>p.slice(pre.length);let ch=false;
+    const like=q=>LEGACY?q:q.like('path',pre+'%');
+    if(VER_OK){
+      const{data:vs,error}=await like(SB.from('docs').select('path,version'));if(error)return;
+      const need=[],seen=new Set();
+      (vs||[]).forEach(r=>{const p=rel(r.path);seen.add(p);if(!Store.dirty.has(p)&&(Store.sv[p]||0)<r.version)need.push(r.path)});
+      if(need.length){const{data,error:e2}=await SB.from('docs').select('path,data,version').in('path',need);if(e2)return;
+        (data||[]).forEach(r=>{const p=rel(r.path);if(Store.dirty.has(p))return;applyDoc(p,r.data);Store.sv[p]=r.version;Store.base[p]=cl0(Store.body(p)??undefined);ch=true})}
+      Object.keys(Store.sv).forEach(p=>{if(!seen.has(p)&&!Store.dirty.has(p)){removeDoc(p);delete Store.sv[p];delete Store.base[p];ch=true}});
+    }else{
+      if(!full&&RT_OK)return; // без версий полную сверку делаем только когда «живой» канал не работает
+      const{data,error}=await like(SB.from('docs').select('path,data'));if(error)return;const seen=new Set();
+      (data||[]).forEach(r=>{if(LEGACY&&r.path.includes(':'))return;const p=rel(r.path);seen.add(p);if(Store.dirty.has(p))return;const c=canon(r.data);
+        if(RAWC[p]!==c){applyDoc(p,r.data);RAWC[p]=c;ch=true}});
+      Object.keys(RAWC).forEach(p=>{if(!seen.has(p)&&!Store.dirty.has(p)){removeDoc(p);delete RAWC[p];ch=true}});
+    }
+    if(ch)renderSoft();
+  }finally{RESYNC_BUSY=false}
 }
+setInterval(()=>{if(document.visibilityState==='visible')resync()},RT_POLL());
+function RT_POLL(){return 60000}
+setInterval(()=>{if(document.visibilityState==='visible'&&!RT_OK)resync(true)},180000);
 window.addEventListener('online',()=>{tryResume();resync()});
 window.addEventListener('offline',()=>{if(Store.dirty.size){OFFLINE=true;setStore('warn','Нет связи');showNet()}});
 let HIDDEN_AT=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')HIDDEN_AT=Date.now();else if(HIDDEN_AT&&Date.now()-HIDDEN_AT>60000)resync()});
@@ -720,6 +739,7 @@ async function loadOrgData(){
   const cfgRow=data.find(r=>r.path==='cfg/main');if(cfgRow)applyDoc('cfg/main',cfgRow.data);
   data.forEach(r=>{if(r.path!=='cfg/main')applyDoc(r.path,r.data)});normalize();
   Store.sv={};Store.base={};if(VER_OK)data.forEach(r=>{Store.sv[r.path]=r.version;Store.base[r.path]=cl0(Store.body(r.path)??undefined)});
+  Object.keys(RAWC).forEach(k=>delete RAWC[k]);data.forEach(r=>RAWC[r.path]=canon(r.data));
   AUTHED=true;LOGIN_ERR='';
   // перенос служебных полей из общего документа в закрытый (один раз)
   if(isAdmin()&&cfgRow&&((cfgRow.data.doctors||[]).some(d=>d.prio||d.block)||(cfgRow.data.assistants||[]).some(a=>PRIV_A.some(k=>a[k]!==undefined))))markCfg();
@@ -738,8 +758,8 @@ async function loadOrgData(){
       if(v!=null&&v<=(Store.sv[path]||0))return; // наше же сохранение или устаревшее
       applyDoc(path,p.new.data);Store.sv[path]=v;Store.base[path]=cl0(Store.body(path)??undefined);renderSoft();return}
     if(p.eventType!=='DELETE'&&(Store.sent[path]||[]).includes(canon(p.new.data)))return; // это наше же сохранение
-    if(p.eventType==='DELETE')removeDoc(path);else applyDoc(path,p.new.data);renderSoft();
-  }).subscribe(st=>{if(st==='SUBSCRIBED'&&LIVE_READY)resync();LIVE_READY=true});
+    if(p.eventType==='DELETE'){removeDoc(path);delete RAWC[path]}else{applyDoc(path,p.new.data);RAWC[path]=canon(p.new.data)}renderSoft();
+  }).subscribe(st=>{RT_OK=st==='SUBSCRIBED';if(st==='SUBSCRIBED'&&LIVE_READY)resync(true);if(st==='SUBSCRIBED')LIVE_READY=true;if(st!=='SUBSCRIBED')console.warn('Живой канал:',st)});
   startPresence();
   setStore('on',isAdmin()?'Сохраняется в базе':'Подключено');render();maybeTour();
 }
@@ -1190,7 +1210,7 @@ function viewBoard(){
       <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>${zoomCtl()}
     <span class="spacer"></span>
     ${editing()?`<button class="btn" data-act="open-gen">Сформировать</button>
-    <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button><button class="btn" data-act="calls">Клич${callItems().length?' ('+callItems().length+')':''}</button><button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
+    <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button>${(()=>{const n=callItems().length,o=callItems().reduce((x,it)=>x+offersFor(it.eid).length,0);return`<button class="btn ${o?'hasoff':''}" data-act="calls">Клич${n?' ('+n+')':''}${o?` · откликов: ${o}`:''}</button>`})()}<button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
     <button class="btn" data-act="export">Скачать / печать</button>
     <button class="btn ghost" data-act="copy" title="Скопировать таблицу для Excel">Копировать</button>
   </div>
