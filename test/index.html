@@ -65,6 +65,7 @@ button{cursor:pointer}
   .top .store{font-size:12px}
   .top .bell{margin-left:auto}
   body.has-nav{padding-bottom:84px}
+  body.has-nav .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:60}
   body.has-nav .envtag{bottom:calc(58px + env(safe-area-inset-bottom,0px));padding-bottom:4px}
   body.has-nav .boardwrap.scrollbox{max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 170px))}
 }
@@ -336,6 +337,11 @@ button.mp{cursor:pointer}
 .mp.w{background:var(--warn-soft);color:var(--warn)}
 .mp.me{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .mp.me.x{background:var(--bad-soft);color:var(--bad)}
+.mp.of{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.mp.go{background:var(--bad-soft);color:var(--bad);border-style:dashed;border-color:var(--bad)}
+.myoffers{margin-bottom:14px}
+.myoffer{display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.myoffer .st{font-size:12px;font-weight:600;color:var(--warn)}
 .mp span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mp .mt{font-size:11px}
 .mp .ma{font-weight:600;font-size:12.5px}
@@ -456,7 +462,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='02.11.2026 08:02'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 08:10'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -922,12 +928,13 @@ function bellItems(){
     INVITES.filter(i=>i.used_by&&!seen.includes(i.token)&&(Date.now()-new Date(i.used_at))<14*864e5).forEach(i=>{const u=MEMBERS.find(m=>m.user_id===i.used_by);
       it.push({k:'inv:'+i.token,t:`${i.card_name||u&&u.name||'Новый сотрудник'}: регистрация по приглашению`,s:`${ROLE_L[i.role]}${u?' · логин '+u.login:''} · ${fmt(iso(new Date(i.used_at)))}`})});
     conflicts().forEach(c=>it.push({k:'cf',t:`${fmt(c.d)} · ${c.cl.name}, ${docName(c.en.doctorId)}`,s:`${asById(c.en.assistantId)?.name}: ${c.w}`,go:'date:'+c.d,stay:true,warn:true}));
-    const seenOf=getSeen('offers')||[];const newOf=[];callItems().forEach(it=>offersFor(it.eid).forEach(a=>{if(!seenOf.includes(a.id+':'+it.eid))newOf.push({a,it})}));
-    if(newOf.length)it.push({k:'of',t:`Отклики на клич: ${newOf.length}`,s:newOf.slice(0,4).map(x=>`${x.a.name} — ${fmt(x.it.d)}, ${x.it.doc}`).join('; ')+(newOf.length>4?'…':''),go:'calls'});
+    const seenOf=getSeen('offers')||[];const newOf=[];offerTargets(false).forEach(t=>t.as.forEach(a=>{if(!seenOf.includes(a.id+':'+t.en.id))newOf.push({a,t})}));
+    if(newOf.length)it.push({k:'of',t:`Новые отклики ассистентов: ${newOf.length}`,s:newOf.slice(0,4).map(x=>`${x.a.name} — ${fmt(x.t.d)}, ${x.t.cl.name}, ${docName(x.t.en.doctorId)}`).join('; ')+(newOf.length>4?'…':''),go:'date:'+newOf[0].t.d});
     activeColl().filter(c=>daysLeft(c.deadline)<=3).forEach(c=>{const miss=S.cfg.assistants.filter(a=>!range(c.from,c.to).some(d=>(S.avail[a.id]||{})[d]));
       if(miss.length)it.push({k:'cl',t:`Сбор дат на ${fmt(c.from)}–${fmt(c.to)}: ${leftText(c)}`,s:'Не отметились: '+miss.map(a=>a.name).join(', '),go:'collect',stay:true,warn:true})});
   }else if(['assistant','doctor'].includes(ROLE())&&myCard()){
     if(ROLE()==='assistant'){const n=callItems().filter(i=>!(S.offers[myCard()]||{})[i.eid]).length;if(n)it.push({k:'call',t:`Нужны ассистенты: ${n} свободных смен`,s:'Откройте «Свободные смены» и откликнитесь, если можете выйти.',go:'calls',stay:true})}
+    if(ROLE()==='assistant'){const sx=getSeen('ofx')||[];myOffers(myCard()).filter(x=>x.st==='taken'&&!sx.includes(x.en.id)).forEach(x=>it.push({k:'ofx:'+x.en.id,t:'На смену поставили другого ассистента',s:`${fmt(x.d)} · ${shiftTime(x.en.shift)} · ${x.cl.name} · ${docName(x.en.doctorId)}`}))}
     if(ROLE()==='assistant')activeColl().filter(c=>c.to>=TODAY).forEach(c=>it.push({k:'cl',t:`Отметьте даты на ${fmt(c.from)}–${fmt(c.to)} до ${fmt(c.deadline)}`,s:leftText(c)+'. Потом даты закрепятся.',go:'avail',stay:true,warn:daysLeft(c.deadline)<=2}));
     const cur=shiftSig();let seen=getSeen('shifts');
     if(!seen){setSeen('shifts',Object.keys(cur));seen=Object.keys(cur)}
@@ -945,11 +952,12 @@ function openBell(){
       foot:`${it.some(x=>!x.stay)?'<button class="btn" data-act="bell-read">Отметить прочитанными</button>':''}<span class="spacer"></span><button class="btn primary" data-act="close">Готово</button>`}});
 }
 function markRead(){CONFLICTS=[];if(isAdmin()){const s=new Set(getSeen('inv')||[]);INVITES.filter(i=>i.used_by).forEach(i=>s.add(i.token));setSeen('inv',[...s]);
-    const so=new Set(getSeen('offers')||[]);callItems().forEach(it=>offersFor(it.eid).forEach(a=>so.add(a.id+':'+it.eid)));setSeen('offers',[...so])}else setSeen('shifts',Object.keys(shiftSig()));updateBell()}
+    const so=new Set(getSeen('offers')||[]);offerTargets(false).forEach(t=>t.as.forEach(a=>so.add(a.id+':'+t.en.id)));setSeen('offers',[...so])}else{setSeen('shifts',Object.keys(shiftSig()));if(ROLE()==='assistant'){const sx=new Set(getSeen('ofx')||[]);myOffers(myCard()).filter(x=>x.st==='taken').forEach(x=>sx.add(x.en.id));setSeen('ofx',[...sx])}}updateBell()}
 ACT_LATE.push(()=>{
   ACT['bell-read']=()=>{markRead();M.refresh()};
   ACT['bell-go']=b=>{const x=bellItems()[+b.dataset.i];if(!x)return;
     if(x.k.startsWith('inv:')){const s=getSeen('inv')||[];s.push(x.k.slice(4));setSeen('inv',s);updateBell();M.refresh();return}
+    if(x.k.startsWith('ofx:')){const s=getSeen('ofx')||[];s.push(x.k.slice(4));setSeen('ofx',s);updateBell();M.refresh();return}
     M.close();
     if(x.go==='users'){openUsers();return}
     if(x.go&&x.go.startsWith('date:')){const d=x.go.slice(5);UI.tab='sched';UI.mode='board';if(d<UI.from||d>UI.to){UI.from=d;UI.to=addDays(d,13)}saveUI();render();return}
@@ -1207,7 +1215,8 @@ function cellHTML(d,cl,ch){
 }
 function cellRO(d,cl,ch){
   return cellArr(d,cl.id,ch,false).map(en=>{const a=asById(en.assistantId);const me=(ROLE()==='assistant'&&en.assistantId===myCard())||(ROLE()==='doctor'&&en.doctorId===myCard());
-    return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(nm(docName(en.doctorId)))}</span></div><div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(nm(a.name)):'—'}</div></div>`}).join('');
+    return`<div class="ent" ${me?'style="border-color:var(--accent);background:var(--accent-soft)"':''}><div class="h">${shChip(en.shift)}<span class="doc" style="cursor:default">${esc(nm(docName(en.doctorId)))}</span></div>${(()=>{if(!a&&ROLE()==='assistant'&&myCard()&&d>=TODAY){const on=!!(S.offers[myCard()]||{})[en.id];return`<button class="as empty ${on?'offer':''}" data-act="pub-offer-open" data-d="${d}" data-e="${en.id}">${on?'На рассмотрении':'+ Откликнуться'}</button>`}
+      return`<div class="as" style="cursor:default;${a?'':'color:var(--muted);border-style:dashed'}">${a?esc(nm(a.name)):'—'}</div>`})()}</div>`}).join('');
 }
 // даты по горизонтали: строки = кресла, столбцы = дни
 /* сколько ассистентов могут и сколько нужно на дату */
@@ -1284,13 +1293,17 @@ function boardM(dates,cls){
     if(!cells.some(c=>c.length)){h+=`<div class="moff">смен нет</div>`;return}
     cells.forEach(arr=>{h+=`<div class="mcell">${arr.map(({en,ch})=>{const a=asById(en.assistantId);
       const me=(role==='assistant'&&!!card&&en.assistantId===card)||(role==='doctor'&&!!card&&en.doctorId===card);
-      const c='mp'+(a?'':' x')+(me?' me':'')+(ed&&a&&entryWarn(d,en)?' w':'');
-      const inner=`<span class="mt num">${ch+1} · ${esc(shiftTime(en.shift))}</span><span class="ma">${a?esc(surname(a.name)):'—'}</span>${UI.mdoc?`<span class="md">${esc(surname(docName(en.doctorId)))}</span>`:''}`;
+      const can=!ed&&!a&&role==='assistant'&&!!card&&d>=TODAY;const mine=can&&!!(S.offers[card]||{})[en.id];
+      const nOf=ed&&!a&&SUPA_ON?offersFor(en.id).length:0;
+      const c='mp'+(a?'':mine||nOf?' of':can?' go':' x')+(me?' me':'')+(ed&&a&&entryWarn(d,en)?' w':'');
+      const second=a?esc(surname(a.name)):mine?'На рассмотрении':can?'+ Откликнуться':nOf?`откликов: ${nOf}`:'—';
+      const inner=`<span class="mt num">${ch+1} · ${esc(shiftTime(en.shift))}</span><span class="ma">${second}</span>${UI.mdoc?`<span class="md">${esc(surname(docName(en.doctorId)))}</span>`:''}`;
+      if(can)return`<button class="${c}" data-act="pub-offer-open" data-d="${d}" data-e="${en.id}">${inner}</button>`;
       return ed?`<button class="${c}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))}">${inner}</button>`:`<div class="${c}">${inner}</div>`}).join('')}</div>`});
   });
   return h+`</div>`;
 }
-const mLegend=()=>`<div class="mlegend"><span><i style="background:var(--ok-soft)"></i>ассистент стоит</span><span><i style="background:var(--bad-soft)"></i>место пустое</span>${editing()?'<span><i style="background:var(--warn-soft)"></i>есть замечание</span>':''}${['assistant','doctor'].includes(ROLE())?'<span><i style="background:var(--accent-soft);border-color:var(--accent)"></i>ваша смена</span>':''}<span><i style="background:var(--today)"></i>сегодня</span></div>`;
+const mLegend=()=>`<div class="mlegend"><span><i style="background:var(--ok-soft)"></i>ассистент стоит</span><span><i style="background:var(--bad-soft)"></i>место пустое</span>${editing()?'<span><i style="background:var(--warn-soft)"></i>есть замечание</span>':''}${['assistant','doctor'].includes(ROLE())?'<span><i style="background:var(--accent-soft);border-color:var(--accent)"></i>ваша смена</span>':''}${ROLE()==='assistant'||editing()?'<span><i style="background:var(--warn-soft);border-color:var(--warn)"></i>есть отклик</span>':''}<span><i style="background:var(--today)"></i>сегодня</span></div>`;
 function viewBoard(){
   const dates=range(UI.from,UI.to);
   const cls=S.cfg.clinics;
@@ -1434,7 +1447,7 @@ function openPicker(date,eid){
     const{en,cl}=f;const load=loadMap();
     const cs=classify(date,en,busyMap(date,en.id),load);
     const off=c=>!!(S.offers[c.a.id]||{})[en.id]&&c.group!=='never';
-    const groups=[['prio','Откликнулись на клич',off],['prio','Приоритет',c=>c.group==='prio'&&!off(c)],['can','Могут в эту смену',c=>c.group==='can'&&!off(c)],['no','Заняты у другого врача',c=>c.sub==='busy'&&!off(c)],['no','Отметили другое время',c=>c.sub==='shift'&&!off(c)],['no','Не отметили этот день',c=>c.sub==='noday'&&!off(c)],['never','Точно не ставить',c=>c.group==='never']];
+    const groups=[['prio','Откликнулись',off],['prio','Приоритет',c=>c.group==='prio'&&!off(c)],['can','Могут в эту смену',c=>c.group==='can'&&!off(c)],['no','Заняты у другого врача',c=>c.sub==='busy'&&!off(c)],['no','Отметили другое время',c=>c.sub==='shift'&&!off(c)],['no','Не отметили этот день',c=>c.sub==='noday'&&!off(c)],['never','Точно не ставить',c=>c.group==='never']];
     const body=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&(gi===0||gi>2))return'';
       return`<div class="grp ${g}"><h3>${l}<span class="n num">${arr.length}</span></h3>${arr.map(c=>{
         const why=[c.sub==='noday'?'':c.reason.replace(/^занят: /,''),c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
@@ -1630,6 +1643,25 @@ function openPublish(){
 
 /* ---------- клич на свободные смены ---------- */
 const offersFor=eid=>S.cfg.assistants.filter(a=>(S.offers[a.id]||{})[eid]);
+/* отклики на пустые места: pub=true — опубликованный график, false — редактируемый */
+function scanFuture(pub,fn){withSrc(pub,()=>{const src=monthsSrc();Object.keys(src).sort().forEach(ym=>Object.keys(src[ym]).sort().forEach(d=>{if(d>=TODAY)forEntries(d,(en,cl,ch)=>fn(d,en,cl,ch))}))})}
+function offerTargets(pub){const out=[];scanFuture(pub,(d,en,cl,ch)=>{if(en.assistantId)return;const as=offersFor(en.id);if(as.length)out.push({d,en,cl,ch,as})});return out}
+function myOffers(card){const o=S.offers[card]||{};const out=[];if(!card||!Object.keys(o).length)return out;
+  scanFuture(true,(d,en,cl,ch)=>{if(o[en.id])out.push({d,en,cl,ch,st:!en.assistantId?'wait':en.assistantId===card?'ok':'taken'})});return out}
+function openOfferPub(d,eid){
+  M.show(()=>{const card=myCard();const f=withSrc(true,()=>findEntry(d,eid));
+    if(!f)return{title:'<h2>Смена не найдена</h2>',body:'<p class="sub">Похоже, расписание изменилось. Обновите страницу.</p>',foot:'<button class="btn" data-act="close">Закрыть</button>'};
+    const{en,cl,ch}=f;const on=!!(S.offers[card]||{})[eid];
+    const busy=withSrc(true,()=>(busyMap(d,eid)[card]||[]).find(x=>overlap(x.shift,en.shift)));
+    const av=(S.avail[card]||{})[d];
+    let body=`<p style="margin-top:0"><b>${fmtL(d)}</b> · ${esc(shiftTime(en.shift))}<br>${esc(cl.name)}, кресло ${ch+1}<br>Врач: ${esc(docName(en.doctorId))}</p>`;
+    let btn='';
+    if(en.assistantId)body+=en.assistantId===card?'<p class="okline">Вы стоите на этой смене.</p>':'<div class="note">На эту смену уже поставили другого ассистента.</div>';
+    else if(on){body+='<div class="note info">Отклик на рассмотрении у ответственного. Когда вас поставят, смена появится в «Мои смены», и придёт уведомление.</div>';btn=`<button class="btn danger" data-act="pub-offer" data-e="${eid}">Отменить отклик</button>`}
+    else if(busy)body+=`<div class="note">В это время у вас уже есть смена: ${esc(busy.label)}.</div>`;
+    else{body+=`<p class="sub">Ответственный увидит отклик и, если всё подходит, поставит вас на эту смену.</p>${av&&(av==='day'||av===en.shift)?'':'<p class="sub">Этот день у вас не отмечен как рабочий — откликнуться всё равно можно.</p>'}`;btn=`<button class="btn primary" data-act="pub-offer" data-e="${eid}">Откликнуться</button>`}
+    return{title:'<h2>Свободное место</h2>',body,foot:`<button class="btn" data-act="close">Закрыть</button><span class="spacer"></span>${btn}`}});
+}
 function callItems(){const out=[];(S.cfg.calls||[]).forEach(c=>(c.items||[]).forEach(it=>{if(it.d>=TODAY)out.push(Object.assign({call:c},it))}));return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.shift]-SHO[y.shift])}
 function pruneCalls(){if(!SUPA_ON||!(S.cfg.calls||[]).length)return;let ch=false;
   withSrc(false,()=>S.cfg.calls.forEach(c=>{const n=c.items.filter(it=>{if(it.d<TODAY)return false;const f=findEntry(it.d,it.eid);return f&&!f.en.assistantId});if(n.length!==c.items.length){c.items=n;ch=true}}));
@@ -1742,7 +1774,9 @@ function viewRole(){
   }
   if(UI.rtab==='all')return viewBoard();
   if(UI.rtab==='calls')return viewCallsStaff(card);
-  return`<div><h1>Мои смены</h1><p class="sub">${esc(person.name)} · с сегодняшнего дня</p></div>${shiftList(myShifts(role==='assistant'?'assistantId':'doctorId',card),role)}`;
+  const mo=role==='assistant'?myOffers(card).filter(x=>x.st==='wait'):[];
+  const moH=mo.length?`<div class="mylist myoffers"><div class="mydate"><b>Мои отклики</b><span>ждут решения ответственного</span></div>${mo.map(x=>`<div class="myoffer"><div style="flex:1;min-width:0"><div class="myt"><b class="num">${fmt(x.d)}</b> ${WD[wdOf(x.d)]} · <b>${esc(shiftTime(x.en.shift))}</b> · ${esc(x.cl.name)}, кресло ${x.ch+1}</div><div class="mym">${esc(docName(x.en.doctorId))} · <span class="st">на рассмотрении</span></div></div><button class="btn sm" data-act="pub-offer-open" data-d="${x.d}" data-e="${x.en.id}">Отменить</button></div>`).join('')}</div>`:'';
+  return`<div><h1>Мои смены</h1><p class="sub">${esc(person.name)} · с сегодняшнего дня</p></div>${moH}${shiftList(myShifts(role==='assistant'?'assistantId':'doctorId',card),role)}`;
 }
 /* ---------- generate ---------- */
 function openGen(){
@@ -2023,7 +2057,11 @@ const ACT={
   'open-gen':()=>{if(!S.cfg.clinics.length){UI.mode='week';render();toast('Сначала добавьте клинику');return}openGen()},
   'open-auto':openAuto,copy:copyTable,
   pick:b=>openPicker(b.dataset.d,b.dataset.e),
-  assign:b=>{const f=findEntry(b.dataset.d,b.dataset.e);if(!f)return;f.en.assistantId=b.dataset.a||null;MISS.delete(f.en.id);markMonth(ymOf(b.dataset.d));pruneCalls();M.close()},
+  assign:b=>{const f=findEntry(b.dataset.d,b.dataset.e);if(!f)return;const aid=b.dataset.a||null;f.en.assistantId=aid;MISS.delete(f.en.id);markMonth(ymOf(b.dataset.d));
+    // принятый отклик сразу попадает в опубликованный график — ассистент получит уведомление
+    if(aid&&SUPA_ON&&(S.offers[aid]||{})[f.en.id]){const p=withSrc(true,()=>findEntry(b.dataset.d,b.dataset.e));
+      if(p&&!p.en.assistantId){p.en.assistantId=aid;markPub(ymOf(b.dataset.d));setTimeout(()=>toast('Отклик принят: смена уже у ассистента в графике'),50)}}
+    pruneCalls();M.close()},
   'edit-ent':b=>openEntryEdit(b.dataset.d,b.dataset.e),
   'add-ent':b=>openEntryEdit(b.dataset.d,null,{cid:b.dataset.c,ch:+b.dataset.ch}),
   avail:b=>openAvail(b.dataset.a),
@@ -2532,7 +2570,10 @@ ACT_LATE.push(()=>{
     UI.mcl=cls.map(c=>c.id).filter(x=>sel.includes(x));saveUI();render()};
   ACT['mdoc']=()=>{UI.mdoc=!UI.mdoc;saveUI();render()};
   ACT['mview']=()=>{UI.mview=UI.mview==='table'?'cards':'table';saveUI();render()};
-  ['mcl','mdoc','mview'].forEach(k=>ROLE_OK.add(k));
+  ACT['pub-offer-open']=b=>openOfferPub(b.dataset.d,b.dataset.e);
+  ACT['pub-offer']=b=>{const card=myCard();if(!card)return;const o=S.offers[card]=S.offers[card]||{};const e=b.dataset.e;
+    if(o[e])delete o[e];else o[e]=new Date().toISOString();markAvail(card);const on=!!o[e];M.close();render();toast(on?'Отклик отправлен ответственному':'Отклик отменён')};
+  ['mcl','mdoc','mview','pub-offer-open','pub-offer'].forEach(k=>ROLE_OK.add(k));
 });
 ACT_LATE.forEach(f=>f());
 render();
