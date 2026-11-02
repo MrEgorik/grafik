@@ -49,6 +49,25 @@ button{cursor:pointer}
 .tabs{display:flex;gap:4px;flex-wrap:wrap}
 .tab{border:0;background:transparent;padding:8px 14px;border-radius:999px;font-weight:600;color:var(--muted)}
 .tab[aria-current="true"]{background:var(--ink);color:var(--bg)}
+.tab .ti,.tab .ts,.tab.more{display:none}
+@media (max-width:700px){
+  .tabs:not(:empty){position:fixed;left:0;right:0;bottom:0;z-index:50;flex-wrap:nowrap;gap:0;justify-content:space-around;background:var(--surface);border-top:1px solid var(--line);padding:4px max(6px,env(safe-area-inset-left,0px)) calc(4px + env(safe-area-inset-bottom,0px))}
+  .tabs .tab{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px;border-radius:10px;font-size:11px;font-weight:600;line-height:1.15;color:var(--muted);background:transparent}
+  .tabs .tab[aria-current="true"]{background:transparent;color:var(--accent)}
+  .tabs .tab[aria-current="true"] .ti{background:var(--accent-soft)}
+  .tab .ti{display:grid;place-items:center;width:44px;height:26px;border-radius:13px;position:relative}
+  .tbadge{position:absolute;top:-3px;right:4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--bad);color:#fff;font-size:10px;line-height:16px;font-weight:700}
+  .tabs .tab{font-size:10.5px}
+  .tab .tl{display:none} .tab .ts{display:block;max-width:100%;text-align:center;overflow-wrap:anywhere}
+  .tab.more{display:flex}
+  .top>[data-act="settings"]{display:none}
+  .top{gap:6px 12px;padding-block:10px 8px}
+  .top .store{font-size:12px}
+  .top .bell{margin-left:auto}
+  body.has-nav{padding-bottom:84px}
+  body.has-nav .envtag{bottom:calc(58px + env(safe-area-inset-bottom,0px));padding-bottom:4px}
+  body.has-nav .boardwrap.scrollbox{max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 170px))}
+}
 .store{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .store b{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .store.on b{background:var(--ok)} .store.warn b{background:var(--warn)}
@@ -437,7 +456,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='02.11.2026 07:51'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 08:02'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -1141,7 +1160,12 @@ function entryWarn(date,en){
 }
 
 /* ---------- render ---------- */
-function render(){renderMain();try{updateBell()}catch(e){}try{trackPresence();updatePresence()}catch(e){}setHdr();document.body.classList.toggle('has-box',!!document.querySelector('#main .scrollbox'))}
+const TAB_IC={sched:'<path d="M4 6h16M4 12h16M4 18h16M9 3v18"/>',doctors:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/><path d="M12 15v4M10 17h4"/>',assistants:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20v-1a6 6 0 0 1 12 0v1"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a4.5 4.5 0 0 1 4.5 4.5V20"/>',
+  mine:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/>',all:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',avail:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 15l2.5 2.5 5-5"/>',calls:'<path d="M3 11v2a2 2 0 0 0 2 2h2l5 4V5L7 9H5a2 2 0 0 0-2 2z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',more:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'};
+const tabIcon=(k,n)=>`<span class="ti" aria-hidden="true">${n?`<span class="tbadge num">${n}</span>`:''}<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TAB_IC[k]||''}</svg></span>`;
+const tabBtn=(act,k,long,short,cur,n)=>`<button class="tab" data-act="${act}" data-v="${k}" aria-current="${cur}">${tabIcon(k,n)}<span class="tl">${long}</span><span class="ts">${short}</span></button>`;
+const moreBtn=()=>`<button class="tab more" data-act="settings">${tabIcon('more')}<span class="ts">Ещё</span></button>`;
+function render(){renderMain();try{updateBell()}catch(e){}try{trackPresence();updatePresence()}catch(e){}setHdr();document.body.classList.toggle('has-box',!!document.querySelector('#main .scrollbox'));document.body.classList.toggle('has-nav',!!(document.getElementById('tabs')||{}).innerHTML)}
 function setHdr(){const t=document.querySelector('.top');if(t)document.documentElement.style.setProperty('--hdr',t.offsetHeight+'px')}
 window.addEventListener('resize',setHdr);
 function renderMain(){
@@ -1150,7 +1174,7 @@ function renderMain(){
   if(SUPA_ON&&AUTHED&&!ORG&&!LEGACY){$('#tabs').innerHTML='';$('#main').innerHTML=`<div class="login"><h1>Организаций пока нет</h1><p class="sub">Создайте первую организацию.</p><button class="btn primary" data-act="orgs">Организации</button></div>`;return}
   if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=PENDING?viewPending():viewLogin();return}
   if(!isAdmin()){$('#main').innerHTML=viewRole();return}
-  $('#tabs').innerHTML=[['sched','Расписание'],['doctors','Врачи'],['assistants','Ассистенты']].map(([k,l])=>`<button class="tab" data-act="tab" data-v="${k}" aria-current="${UI.tab===k}">${l}</button>`).join('');
+  $('#tabs').innerHTML=[['sched','Расписание','График'],['doctors','Врачи','Врачи'],['assistants','Ассистенты','Ассистенты']].map(([k,l,sh])=>tabBtn('tab',k,l,sh+(k==='sched'&&unpubCount()&&SUPA_ON?' •':''),UI.tab===k)).join('')+moreBtn();
   const m=$('#main');
   if(UI.tab==='sched'){if(UI.mode==='pub'&&!SUPA_ON)UI.mode='board';m.innerHTML=UI.mode==='week'?viewWeek():UI.mode==='amap'?viewAvailMap():viewBoard()}
   else if(UI.tab==='doctors')m.innerHTML=viewDoctors();
@@ -1706,9 +1730,10 @@ function shiftList(items,kind){
 function viewRole(){
   const role=ROLE(),card=myCard();
   const nCalls=role==='assistant'?callItems().length:0;
-  const tabs=role==='assistant'?[['mine','Мои смены'],['avail','Когда могу'+(activeColl().some(c=>c.to>=TODAY)?' •':'')]].concat(nCalls?[['calls',`Свободные смены (${nCalls})`]]:[]).concat([['all','Общий график']]):[['mine','Мои смены'],['all','Общий график']];
+  const dot=activeColl().some(c=>c.to>=TODAY)?' •':'';
+  const tabs=role==='assistant'?[['mine','Мои смены','Мои смены'],['avail','Когда могу'+dot,'Мои даты'+dot]].concat(nCalls?[['calls',`Свободные смены (${nCalls})`,'Свободные',nCalls]]:[]).concat([['all','Общий график','График']]):[['mine','Мои смены','Мои смены'],['all','Общий график','График']];
   if(!tabs.some(t=>t[0]===UI.rtab))UI.rtab='mine';
-  $('#tabs').innerHTML=tabs.length>1?tabs.map(([k,l])=>`<button class="tab" data-act="rtab" data-v="${k}" aria-current="${UI.rtab===k}">${l}</button>`).join(''):'';
+  $('#tabs').innerHTML=tabs.length>1?tabs.map(([k,l,sh,n])=>tabBtn('rtab',k,l,sh,UI.rtab===k,n)).join('')+moreBtn():'';
   const person=role==='assistant'?asById(card):docById(card);
   if(!person)return`<div class="login"><h1>Карточка не найдена</h1><p class="sub">Администратор открыл вам доступ, но не привязал вас к карточке ${role==='assistant'?'ассистента':'врача'}. Сообщите ему.</p><div class="row"><button class="btn" data-act="logout">Выйти</button></div></div>`;
   if(UI.rtab==='avail'){
