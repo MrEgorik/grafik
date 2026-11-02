@@ -65,7 +65,12 @@ button{cursor:pointer}
   .top .store{font-size:12px}
   .top .bell{margin-left:auto}
   body.has-nav{padding-bottom:84px}
-  body.has-nav .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:60}
+  body .mback{flex-direction:column;align-items:stretch;padding:max(40px,env(safe-area-inset-top,0px)) 0 0;z-index:70}
+  body .modal,body .modal.wide{width:100%;margin-top:auto;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom,0px)}
+  body .modal::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 0}
+  .mpub{position:fixed;left:16px;right:16px;bottom:calc(66px + env(safe-area-inset-bottom,0px));z-index:45;border:0;border-radius:12px;padding:12px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;font-size:15px;box-shadow:0 6px 18px rgb(0 0 0/.18)}
+  body.has-nav .envtag~.mpub{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+  body.has-nav .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:80}
   body.has-nav .envtag{bottom:calc(58px + env(safe-area-inset-bottom,0px));padding-bottom:4px}
   body.has-nav .boardwrap.scrollbox{max-height:max(320px,calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 170px))}
 }
@@ -348,6 +353,18 @@ button.mp{cursor:pointer}
 .mp .md{font-size:11px;color:var(--muted)}
 .mrule{grid-column:1/-1;position:relative;z-index:1;height:1px;background:var(--line);margin:2px 0}
 .moff{grid-column:2/-1;align-self:center;font-size:12px;color:var(--muted);background:var(--sunk);border-radius:8px;padding:5px 10px}
+.mhd{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+.mper{flex:1;position:relative;text-align:center;font-weight:700;font-size:16px;padding:6px 0;border-radius:8px}
+.mper small{color:var(--muted);font-weight:500;font-size:12px;margin-left:4px}
+.mper input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.mrow2{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.mrow2 .seg{flex:none}
+.mchip.flt[aria-pressed=true]{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.mchip.flt.of[aria-pressed=true]{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.mnone{padding:30px 16px;text-align:center;color:var(--muted)}
+details.pmore{border:1px dashed var(--line);border-radius:8px;padding:6px 10px}
+details.pmore summary{cursor:pointer;font-weight:600;color:var(--muted);font-size:13px}
+details.pmore[open] summary{margin-bottom:8px}
 .mlegend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 2px 0}
 .mlegend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1.5px solid transparent}
 .zoom{display:inline-flex;align-items:center;gap:2px;background:var(--sunk);border-radius:9px;padding:2px}
@@ -462,7 +479,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='02.11.2026 08:10'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 09:06'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -576,7 +593,7 @@ function mergePriv(){S.cfg.doctors.forEach(d=>Object.assign(d,(PRIV.doctors||{})
 const ROLE=()=>SUPA_ON?(ME&&ME.role)||'none':'admin';
 const isAdmin=()=>['admin','owner'].includes(ROLE());
 const isOwner=()=>ROLE()==='owner';
-const ACT_LATE=[];let PEOPLE_T=null;let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
+const ACT_LATE=[];let PEOPLE_T=null;let PICK=null;let ORG=null,ORGS=[],LEGACY=false; // LEGACY — база ещё без организаций (до выполнения SQL)
 const orgName=id=>(ORGS.find(o=>o.id===id)||{}).name||'';
 const P=p=>LEGACY?p:ORG+':'+p; // путь в базе с префиксом организации
 let DEMO=null; // пример на время обучения — ничего не сохраняется
@@ -1168,7 +1185,7 @@ function entryWarn(date,en){
 }
 
 /* ---------- render ---------- */
-const TAB_IC={sched:'<path d="M4 6h16M4 12h16M4 18h16M9 3v18"/>',doctors:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/><path d="M12 15v4M10 17h4"/>',assistants:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20v-1a6 6 0 0 1 12 0v1"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a4.5 4.5 0 0 1 4.5 4.5V20"/>',
+const TAB_IC={offers:'<path d="M3 11v2a2 2 0 0 0 2 2h2l5 4V5L7 9H5a2 2 0 0 0-2 2z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',amap:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 17v-3M12 17v-5M16 17v-2"/>',people:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20v-1a6 6 0 0 1 12 0v1"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a4.5 4.5 0 0 1 4.5 4.5V20"/>',sched:'<path d="M4 6h16M4 12h16M4 18h16M9 3v18"/>',doctors:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/><path d="M12 15v4M10 17h4"/>',assistants:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20v-1a6 6 0 0 1 12 0v1"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14a4.5 4.5 0 0 1 4.5 4.5V20"/>',
   mine:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/>',all:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',avail:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8.5 15l2.5 2.5 5-5"/>',calls:'<path d="M3 11v2a2 2 0 0 0 2 2h2l5 4V5L7 9H5a2 2 0 0 0-2 2z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',more:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'};
 const tabIcon=(k,n)=>`<span class="ti" aria-hidden="true">${n?`<span class="tbadge num">${n}</span>`:''}<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TAB_IC[k]||''}</svg></span>`;
 const tabBtn=(act,k,long,short,cur,n)=>`<button class="tab" data-act="${act}" data-v="${k}" aria-current="${cur}">${tabIcon(k,n)}<span class="tl">${long}</span><span class="ts">${short}</span></button>`;
@@ -1182,11 +1199,14 @@ function renderMain(){
   if(SUPA_ON&&AUTHED&&!ORG&&!LEGACY){$('#tabs').innerHTML='';$('#main').innerHTML=`<div class="login"><h1>Организаций пока нет</h1><p class="sub">Создайте первую организацию.</p><button class="btn primary" data-act="orgs">Организации</button></div>`;return}
   if(SUPA_ON&&!AUTHED){$('#tabs').innerHTML='';$('#main').innerHTML=PENDING?viewPending():viewLogin();return}
   if(!isAdmin()){$('#main').innerHTML=viewRole();return}
-  $('#tabs').innerHTML=[['sched','Расписание','График'],['doctors','Врачи','Врачи'],['assistants','Ассистенты','Ассистенты']].map(([k,l,sh])=>tabBtn('tab',k,l,sh+(k==='sched'&&unpubCount()&&SUPA_ON?' •':''),UI.tab===k)).join('')+moreBtn();
+  if(MOBQ.matches){const nOf=SUPA_ON?offerTargets(false).length:0;const sm=UI.tab==='sched';
+    $('#tabs').innerHTML=tabBtn('mnav','sched','Расписание','График'+(unpubCount()&&SUPA_ON?' •':''),sm&&UI.mode!=='amap'&&UI.mode!=='week')+(SUPA_ON?tabBtn('mnav','offers','Отклики','Отклики',UI.tab==='offers',nOf):'')+tabBtn('mnav','amap','Доступность','Доступн.',sm&&UI.mode==='amap')+tabBtn('mnav','people','Люди','Люди',UI.tab==='doctors'||UI.tab==='assistants')+`<button class="tab more" data-act="mmore" aria-current="${sm&&UI.mode==='week'}">${tabIcon('more')}<span class="ts">Ещё</span></button>`}
+  else $('#tabs').innerHTML=[['sched','Расписание','График'],['doctors','Врачи','Врачи'],['assistants','Ассистенты','Ассистенты']].map(([k,l,sh])=>tabBtn('tab',k,l,sh+(k==='sched'&&unpubCount()&&SUPA_ON?' •':''),UI.tab===k)).join('')+moreBtn();
   const m=$('#main');
   if(UI.tab==='sched'){if(UI.mode==='pub'&&!SUPA_ON)UI.mode='board';m.innerHTML=UI.mode==='week'?viewWeek():UI.mode==='amap'?viewAvailMap():viewBoard()}
-  else if(UI.tab==='doctors')m.innerHTML=viewDoctors();
-  else m.innerHTML=viewAssistants();
+  else if(UI.tab==='offers')m.innerHTML=viewOffers();
+  else{const pseg=MOBQ.matches?`<div class="seg" role="group" style="margin-bottom:10px"><button data-act="mnav" data-v="p:doctors" aria-pressed="${UI.tab==='doctors'}">Врачи</button><button data-act="mnav" data-v="p:assistants" aria-pressed="${UI.tab!=='doctors'}">Ассистенты</button></div>`:'';
+    m.innerHTML=pseg+(UI.tab==='doctors'?viewDoctors():viewAssistants())}
 }
 function exampleBanner(){
   const n=S.cfg.doctors.filter(d=>d.example).length+S.cfg.assistants.filter(a=>a.example).length;
@@ -1279,16 +1299,32 @@ function mSel(dates,cls){
     if(!sel.length)sel=cls.slice(0,2).map(c=>c.id)}
   return sel.slice(0,3);
 }
+const MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+function perLabel(a,b){const x=pd(a),y=pd(b);return x.getMonth()===y.getMonth()?`${x.getDate()} – ${y.getDate()} ${MON[y.getMonth()]}`:`${x.getDate()} ${MON[x.getMonth()]} – ${y.getDate()} ${MON[y.getMonth()]}`}
+function mHead(){
+  const ad=isAdmin();
+  return`<div class="mhd"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
+    <label class="mper"><span class="num">${perLabel(UI.from,UI.to)}</span><input type="date" id="mFrom" value="${UI.from}" aria-label="Начало периода"></label>
+    <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>
+    <div class="mrow2">${ad&&SUPA_ON?`<div class="seg" role="group"><button data-act="mode" data-v="board" aria-pressed="${UI.mode!=='pub'}">Черновик</button><button data-act="mode" data-v="pub" aria-pressed="${UI.mode==='pub'}">Опубликовано</button></div>`:''}<span class="spacer"></span><button class="btn sm" data-act="mactions">⋯ Действия</button></div>`;
+}
+function mCounts(dates,cls){const sel=mSel(dates,cls);let e=0,o=0;dates.forEach(d=>forEntries(d,(en,cl)=>{if(!sel.includes(cl.id)||en.assistantId)return;e++;if(SUPA_ON&&offersFor(en.id).length)o++}));return{e,o}}
 function mChips(dates,cls){
-  const sel=mSel(dates,cls);
-  return`<div class="mchips" role="group" aria-label="Какие клиники показывать"><button class="mchip" data-act="mcl" data-v="*" aria-pressed="${!!UI.mall}">Все</button>${cls.map(c=>`<button class="mchip" data-act="mcl" data-v="${c.id}" aria-pressed="${!UI.mall&&sel.includes(c.id)}">${esc(c.name)}</button>`).join('')}<span class="msep"></span><button class="mchip" data-act="mdoc" aria-pressed="${!!UI.mdoc}">Врачи</button></div>`;
+  const sel=mSel(dates,cls);const ed=editing();const n=ed?mCounts(dates,cls):null;
+  return`<div class="mchips" role="group" aria-label="Какие клиники показывать">${ed?`<button class="mchip flt" data-act="mflt" data-v="empty" aria-pressed="${UI.mfilt==='empty'}">Только пустые · ${n.e}</button>${SUPA_ON?`<button class="mchip flt of" data-act="mflt" data-v="offers" aria-pressed="${UI.mfilt==='offers'}">Отклики · ${n.o}</button>`:''}<span class="msep"></span>`:''}<button class="mchip" data-act="mcl" data-v="*" aria-pressed="${!!UI.mall}">Все</button>${cls.map(c=>`<button class="mchip" data-act="mcl" data-v="${c.id}" aria-pressed="${!UI.mall&&sel.includes(c.id)}">${esc(c.name)}</button>`).join('')}<span class="msep"></span><button class="mchip" data-act="mdoc" aria-pressed="${!!UI.mdoc}">Врачи</button></div>`;
 }
 function boardM(dates,cls){
   const sel=mSel(dates,cls),sc=cls.filter(c=>sel.includes(c.id));
   const card=myCard(),role=ROLE(),ed=editing();
   let h=`<div class="mwk ${UI.mall?'all':''}" style="grid-template-columns:34px repeat(${sc.length},${UI.mall?'minmax(104px,1fr)':'minmax(0,1fr)'})"><div class="mch corner"></div>${sc.map(c=>`<div class="mch">${esc(c.name)}</div>`).join('')}`;
-  dates.forEach((d,i)=>{const w=wdOf(d);if(i)h+='<div class="mrule"></div>';
-    const cells=sc.map(cl=>{const out=[];for(let ch=0;ch<cl.chairs;ch++)cellArr(d,cl.id,ch,false).forEach(en=>out.push({en,ch}));return out.sort((x,y)=>x.ch-y.ch||SHO[x.en.shift]-SHO[y.en.shift])});
+  let shown=0;
+  dates.forEach((d,i)=>{const w=wdOf(d);
+    const flt=ed?UI.mfilt:null;
+    const keep=en=>!flt||(!en.assistantId&&(flt==='empty'||(SUPA_ON&&offersFor(en.id).length)));
+    const cells=sc.map(cl=>{const out=[];for(let ch=0;ch<cl.chairs;ch++)cellArr(d,cl.id,ch,false).forEach(en=>{if(keep(en))out.push({en,ch})});return out.sort((x,y)=>x.ch-y.ch||SHO[x.en.shift]-SHO[y.en.shift])});
+    if(flt&&!cells.some(c=>c.length))return;
+    shown++;
+    if(shown>1)h+='<div class="mrule"></div>';
     h+=`<div class="mdl"><div class="mdb ${d===TODAY?'today':''} ${w>4?'we':''}"><b class="num">${pd(d).getDate()}</b>${WD[w]}</div></div>`;
     if(!cells.some(c=>c.length)){h+=`<div class="moff">смен нет</div>`;return}
     cells.forEach(arr=>{h+=`<div class="mcell">${arr.map(({en,ch})=>{const a=asById(en.assistantId);
@@ -1301,10 +1337,37 @@ function boardM(dates,cls){
       if(can)return`<button class="${c}" data-act="pub-offer-open" data-d="${d}" data-e="${en.id}">${inner}</button>`;
       return ed?`<button class="${c}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))}">${inner}</button>`:`<div class="${c}">${inner}</div>`}).join('')}</div>`});
   });
+  if(!shown)return`<div class="mnone">${UI.mfilt==='offers'?'Мест с откликами нет':'Пустых мест нет — всё заполнено'}</div>`;
   return h+`</div>`;
 }
 const mLegend=()=>`<div class="mlegend"><span><i style="background:var(--ok-soft)"></i>ассистент стоит</span><span><i style="background:var(--bad-soft)"></i>место пустое</span>${editing()?'<span><i style="background:var(--warn-soft)"></i>есть замечание</span>':''}${['assistant','doctor'].includes(ROLE())?'<span><i style="background:var(--accent-soft);border-color:var(--accent)"></i>ваша смена</span>':''}${ROLE()==='assistant'||editing()?'<span><i style="background:var(--warn-soft);border-color:var(--warn)"></i>есть отклик</span>':''}<span><i style="background:var(--today)"></i>сегодня</span></div>`;
+function viewOffers(){
+  const ts=offerTargets(false);
+  const calls=SUPA_ON?callItems().filter(it=>!offersFor(it.eid).length):[];
+  let h=`<div><h1>Отклики</h1><p class="sub">Ассистенты готовы выйти на пустые места. «Поставить» — и смена сразу появится у ассистента в графике.</p></div>`;
+  if(!ts.length)h+=`<div class="boardwrap"><div class="empty-board"><h2>Откликов пока нет</h2><p>Ассистенты откликаются на пустые места в опубликованном графике и на клич.</p></div></div>`;
+  else h+=ts.map(t=>{const cs=classify(t.d,t.en,busyMap(t.d,t.en.id),loadMap());
+    return`<div class="mylist myoffers"><div class="mydate"><b class="num">${fmt(t.d)}</b><span>${WD[wdOf(t.d)]} · ${esc(shiftTime(t.en.shift))} · ${esc(t.cl.name)}, кр. ${t.ch+1} · ${esc(docName(t.en.doctorId))}</span></div>${t.as.map(a=>{const c=cs.find(x=>x.a.id===a.id)||{};
+      const why=[c.group==='no'||c.group==='never'?c.reason:'',(c.missing||[]).length?'нет навыка: '+c.missing.map(x=>tagById(x)?.name).join(', '):''].filter(Boolean).join(' · ');
+      return`<div class="myoffer"><div style="flex:1;min-width:0"><b>${esc(a.name)}</b><div class="mym">${c.av?SH[c.av].l:'день не отмечен'} · ${c.load||0} смен${why?` · <span style="color:var(--bad)">${esc(why)}</span>`:''}</div></div><button class="btn sm primary" data-act="assign" data-d="${t.d}" data-e="${t.en.id}" data-a="${a.id}">Поставить</button></div>`}).join('')}</div>`}).join('');
+  if(calls.length)h+=`<div class="note">В кличе ${calls.length} мест без откликов.<span class="spacer"></span><button class="btn sm" data-act="calls">Открыть клич</button></div>`;
+  return h;
+}
+function viewBoardM(){
+  const dates=range(UI.from,UI.to),cls=S.cfg.clinics;const has=dates.some(d=>dayObj(d,false));const ed=editing();
+  let board;
+  if(!cls.length)board=`<div class="empty-board"><h2>Нет клиник</h2><p>Добавьте клинику в «Ещё» → «Базовая неделя и клиники».</p></div>`;
+  else if(!has)board=ed?`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`:`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} графика пока нет</h2><p>Переключите неделю стрелками.</p></div>`;
+  else board=boardM(dates,cls);
+  const unp=ed&&SUPA_ON?unpubDays():[];
+  return`${isAdmin()?exampleBanner():''}${ed&&SUPA_ON?'<div class="note info" id="peerNote" hidden></div>':''}
+  ${mHead()}
+  ${isAdmin()&&usePub()?'<p class="sub" style="margin:0 0 8px">Так график видят сотрудники. Менять — во вкладке «Черновик».</p>':''}
+  ${has&&cls.length?mChips(dates,cls)+`<div class="boardwrap scrollbox">${board}</div>`+mLegend():`<div class="boardwrap">${board}</div>`}
+  ${unp.length?`<div style="height:60px"></div><button class="mpub" data-act="publish">Опубликовать · ${unp.length} дн.</button>`:''}`;
+}
 function viewBoard(){
+  if(MOB())return viewBoardM();
   const dates=range(UI.from,UI.to);
   const cls=S.cfg.clinics;
   let has=false,total=0,empty=0,warn=0;
@@ -1441,6 +1504,7 @@ function newTag(name){name=name.trim();if(!name)return null;let t=S.cfg.tags.fin
 
 /* ---------- modals: entries ---------- */
 function openPicker(date,eid){
+  PICK={d:date,e:eid,done:null};
   NP={open:false,on:a=>{const f=findEntry(date,eid);if(!f)return;f.en.assistantId=a.id;MISS.delete(f.en.id);markMonth(ymOf(date));M.close();toast(a.name+' добавлен(а) и поставлен(а) в смену')}};
   M.show(()=>{
     const f=findEntry(date,eid);if(!f)return{title:'Смена удалена',body:''};
@@ -1448,15 +1512,19 @@ function openPicker(date,eid){
     const cs=classify(date,en,busyMap(date,en.id),load);
     const off=c=>!!(S.offers[c.a.id]||{})[en.id]&&c.group!=='never';
     const groups=[['prio','Откликнулись',off],['prio','Приоритет',c=>c.group==='prio'&&!off(c)],['can','Могут в эту смену',c=>c.group==='can'&&!off(c)],['no','Заняты у другого врача',c=>c.sub==='busy'&&!off(c)],['no','Отметили другое время',c=>c.sub==='shift'&&!off(c)],['no','Не отметили этот день',c=>c.sub==='noday'&&!off(c)],['never','Точно не ставить',c=>c.group==='never']];
-    const body=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&(gi===0||gi>2))return'';
+    const parts=groups.map(([g,l,f],gi)=>{const arr=sortCands(cs.filter(f));if(!arr.length&&(gi===0||gi>2||MOBQ.matches))return'';
       return`<div class="grp ${g}"><h3>${l}<span class="n num">${arr.length}</span></h3>${arr.map(c=>{
         const why=[c.sub==='noday'?'':c.reason.replace(/^занят: /,''),c.missing.length?'нет навыка: '+c.missing.map(t=>tagById(t)?.name).join(', '):'' ].filter(Boolean).join(' · ');
         return`<button class="cand ${en.assistantId===c.a.id?'cur':''}" data-act="assign" data-d="${date}" data-e="${eid}" data-a="${c.a.id}">
           <span><span class="nm">${esc(c.a.name)}</span>${why?`<br><span class="why">${esc(why)}</span>`:''}</span>
-          <span class="r num">${c.av?SH[c.av].l:''}<br>${c.load} смен${SET().rates&&num(c.a.rate)!=null?' · '+rub(shiftCost(c.a,en.shift)):''}</span></button>`}).join('')||'<div class="list-empty">—</div>'}</div>`}).join('');
+          <span class="r num">${c.av?SH[c.av].l:''}<br>${c.load} смен${SET().rates&&num(c.a.rate)!=null?' · '+rub(shiftCost(c.a,en.shift)):''}</span></button>`}).join('')||'<div class="list-empty">—</div>'}</div>`});
+    let body;
+    if(MOBQ.matches){const rest=parts.slice(3).filter(Boolean);const nRest=cs.filter(c=>c.group==='no'||c.group==='never').filter(c=>!off(c)).length;
+      body=(PICK&&PICK.done&&en.assistantId?`<p class="okline" style="margin:0">Поставлен(а): ${esc(asById(en.assistantId)?.name||'')}</p>`:'')+parts.slice(0,3).join('')+(rest.length?`<details class="pmore"><summary>Заняты, другое время, не отметили · ${nRest}</summary>${rest.join('')}</details>`:'')}
+    else body=parts.join('');
     const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
     return{title:`<h2>${esc(docName(en.doctorId))}</h2><p class="sub">${esc(cl.name)} · ${fmtL(date)} · ${SH[en.shift].l}${tg.length?' · нужно: '+tg.map(t=>esc(t.name)).join(', '):''}</p>`,
-      body:body+newPersonHTML('as',!S.cfg.assistants.length),foot:en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать ассистента</button>`:''};
+      body:body+newPersonHTML('as',!S.cfg.assistants.length),foot:(en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать</button>`:'')+(MOBQ.matches?`<span class="spacer"></span><button class="btn ${PICK&&PICK.done?'primary':''}" data-act="pick-next" data-d="${date}" data-e="${eid}">Следующее пустое ›</button>`:'')};
   });
 }
 function openEntryEdit(date,eid,newAt){
@@ -2061,7 +2129,7 @@ const ACT={
     // принятый отклик сразу попадает в опубликованный график — ассистент получит уведомление
     if(aid&&SUPA_ON&&(S.offers[aid]||{})[f.en.id]){const p=withSrc(true,()=>findEntry(b.dataset.d,b.dataset.e));
       if(p&&!p.en.assistantId){p.en.assistantId=aid;markPub(ymOf(b.dataset.d));setTimeout(()=>toast('Отклик принят: смена уже у ассистента в графике'),50)}}
-    pruneCalls();M.close()},
+    pruneCalls();if(MOBQ.matches&&M.open&&PICK&&PICK.e===b.dataset.e&&aid){PICK.done=aid;M.refresh();render()}else M.close()},
   'edit-ent':b=>openEntryEdit(b.dataset.d,b.dataset.e),
   'add-ent':b=>openEntryEdit(b.dataset.d,null,{cid:b.dataset.c,ch:+b.dataset.ch}),
   avail:b=>openAvail(b.dataset.a),
@@ -2573,7 +2641,37 @@ ACT_LATE.push(()=>{
   ACT['pub-offer-open']=b=>openOfferPub(b.dataset.d,b.dataset.e);
   ACT['pub-offer']=b=>{const card=myCard();if(!card)return;const o=S.offers[card]=S.offers[card]||{};const e=b.dataset.e;
     if(o[e])delete o[e];else o[e]=new Date().toISOString();markAvail(card);const on=!!o[e];M.close();render();toast(on?'Отклик отправлен ответственному':'Отклик отменён')};
-  ['mcl','mdoc','mview','pub-offer-open','pub-offer'].forEach(k=>ROLE_OK.add(k));
+  ACT['mflt']=b=>{const v=b.dataset.v;UI.mfilt=UI.mfilt===v?null:v;saveUI();render()};
+  ACT['mnav']=b=>{const v=b.dataset.v;
+    if(v==='sched'){UI.tab='sched';if(!['board','pub'].includes(UI.mode))UI.mode='board'}
+    else if(v==='offers')UI.tab='offers';
+    else if(v==='amap'){UI.tab='sched';UI.mode='amap'}
+    else if(v==='week'){UI.tab='sched';UI.mode='week'}
+    else if(v==='people')UI.tab=UI.ptab||'assistants';
+    else if(v.startsWith('p:')){UI.tab=v.slice(2);UI.ptab=UI.tab}
+    saveUI();render();window.scrollTo(0,0)};
+  const menu=(title,items)=>M.show(()=>({title:`<h2>${title}</h2>`,body:items.filter(Boolean).map(([k,l,sub])=>`<button class="cand" data-act="mrun" data-v="${k}"><span><span class="nm">${l}</span>${sub?`<br><span class="why">${sub}</span>`:''}</span></button>`).join('')}));
+  ACT['mactions']=()=>{const ed=editing();menu('Действия',[
+    ed&&['open-gen','Сформировать расписание','Врачи из базовой недели на выбранный период'],
+    ed&&['open-auto','Автозаполнение','Расставить ассистентов по их датам'],
+    ed&&SUPA_ON&&['collect','Сбор дат','Попросить ассистентов отметить даты'],
+    ed&&SUPA_ON&&['calls','Клич на свободные смены',''],
+    ['export','Скачать / печать','PDF, картинка, Word'],
+    ['mview','Показать таблицей','Полная таблица, как на компьютере']])};
+  ACT['mmore']=()=>menu('Ещё',[
+    isAdmin()&&['nav:week','Базовая неделя и клиники','Кресла, обычная неделя врачей'],
+    ['settings','Настройки','Вид графика, ставки, пароль'],
+    isAdmin()&&SUPA_ON&&['users','Сотрудники и приглашения',''],
+    isOwner()&&SUPA_ON&&['orgs','Организации',''],
+    ['tour','Обучение',''],
+    SUPA_ON&&['logout','Выйти','']]);
+  ACT['mrun']=b=>{const v=b.dataset.v;M.close();setTimeout(()=>{if(v.startsWith('nav:'))ACT.mnav({dataset:{v:v.slice(4)}});else if(ACT[v])ACT[v](b)},0)};
+  ACT['pick-next']=b=>{const d0=b.dataset.d,e0=b.dataset.e;const dates=range(UI.from,UI.to),cls=S.cfg.clinics;const sel=mSel(dates,cls);
+    const list=[];dates.forEach(d=>cls.forEach(cl=>{if(!sel.includes(cl.id))return;for(let ch=0;ch<cl.chairs;ch++)cellArr(d,cl.id,ch,false).slice().sort((x,y)=>SHO[x.shift]-SHO[y.shift]).forEach(en=>list.push({d,en}))}));
+    const i=list.findIndex(x=>x.en.id===e0&&x.d===d0);const nx=list.slice(i+1).concat(i>=0?list.slice(0,i):list).find(x=>!x.en.assistantId&&x.en.id!==e0);
+    if(!nx){M.close();toast('Больше пустых мест в этой неделе нет');return}openPicker(nx.d,nx.en.id)};
+  document.addEventListener('change',e=>{if(e.target.id==='mFrom'&&e.target.value){const len=Math.max(0,Math.round((pd(UI.to)-pd(UI.from))/864e5));UI.from=e.target.value;UI.to=addDays(UI.from,len);MISS.clear();saveUI();render()}});
+  ['mcl','mdoc','mview','pub-offer-open','pub-offer','mactions','mmore','mrun'].forEach(k=>ROLE_OK.add(k));
 });
 ACT_LATE.forEach(f=>f());
 render();
