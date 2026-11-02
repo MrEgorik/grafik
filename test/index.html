@@ -479,7 +479,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='02.11.2026 09:23'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 11:55'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -1226,7 +1226,7 @@ function cellHTML(d,cl,ch){
     h+=`<div class="ent" data-d="${d}" data-e="${en.id}"><div class="h">${shChip(en.shift)}<button class="doc" data-act="edit-ent" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))} — изменить смену">${esc(nm(docName(en.doctorId)))}</button></div>`;
     if(tg.length&&st.showTags)h+=`<div class="tags">${tg.map(t=>`<span class="tag">${esc(t.name)}</span>`).join('')}</div>`;
     h+=a?`<button class="as ${wr?'warn':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(wr)}"><span class="dot"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm(a.name))}</span>${st.rates&&shiftCost(a,en.shift)?`<span class="cost num">${rub(shiftCost(a,en.shift))}</span>`:''}</button>`
-       :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${XS()?(of?`+ ${of}`:miss?'нет':'+'):of?`+ ассистент · откликов: ${of}`:miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
+       :(()=>{const of=SUPA_ON?offersFor(en.id).length:0;return`<button class="as empty ${miss&&!of?'miss':''} ${of?'offer':''}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(miss||'')}">${XS()?(of?`+ ${of}`:miss?'нет':'+'):of?`+ ассистент · откликов: ${of}`:SUPA_ON&&inCallSet().has(en.id)?'+ ассистент · клич':miss?'Не нашлось ассистента':'+ ассистент'}</button>`})();
     h+=`</div>`;
   });
   const full=arr.some(e=>e.shift==='day')||arr.length>=2;
@@ -1332,7 +1332,7 @@ function boardM(dates,cls){
       const can=!ed&&!a&&role==='assistant'&&!!card&&d>=TODAY;const mine=can&&!!(S.offers[card]||{})[en.id];
       const nOf=ed&&!a&&SUPA_ON?offersFor(en.id).length:0;
       const c='mp'+(a?'':mine||nOf?' of':can?' go':' x')+(me?' me':'')+(ed&&a&&entryWarn(d,en)?' w':'');
-      const second=a?esc(surname(a.name)):mine?'На рассмотрении':can?'+ Откликнуться':nOf?`откликов: ${nOf}`:'—';
+      const second=a?esc(surname(a.name)):mine?'На рассмотрении':can?'+ Откликнуться':nOf?`откликов: ${nOf}`:ed&&SUPA_ON&&inCallSet().has(en.id)?'клич отправлен':'—';
       const inner=`<span class="mt num">${ch+1} · ${esc(shiftTime(en.shift))}</span><span class="ma">${second}</span>${UI.mdoc?`<span class="md">${esc(surname(docName(en.doctorId)))}</span>`:''}`;
       if(can)return`<button class="${c}" data-act="pub-offer-open" data-d="${d}" data-e="${en.id}">${inner}</button>`;
       return ed?`<button class="${c}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))}">${inner}</button>`:`<div class="${c}">${inner}</div>`}).join('')}</div>`});
@@ -1524,7 +1524,7 @@ function openPicker(date,eid){
     else body=parts.join('');
     const tg=(en.tags||[]).map(t=>tagById(t)).filter(Boolean);
     return{title:`<h2>${esc(docName(en.doctorId))}</h2><p class="sub">${esc(cl.name)} · ${fmtL(date)} · ${SH[en.shift].l}${tg.length?' · нужно: '+tg.map(t=>esc(t.name)).join(', '):''}</p>`,
-      body:body+newPersonHTML('as',!S.cfg.assistants.length),foot:(en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать</button>`:'')+(MOBQ.matches?`<span class="spacer"></span><button class="btn ${PICK&&PICK.done?'primary':''}" data-act="pick-next" data-d="${date}" data-e="${eid}">Следующее пустое ›</button>`:'')};
+      body:body+newPersonHTML('as',!S.cfg.assistants.length),foot:(en.assistantId?`<button class="btn danger" data-act="assign" data-d="${date}" data-e="${eid}" data-a="">Убрать</button>`:'')+(!en.assistantId&&SUPA_ON&&date>=TODAY?(inCallSet().has(eid)?`<button class="btn" data-act="call-one-drop" data-d="${date}" data-e="${eid}">В кличе · снять</button>`:`<button class="btn" data-act="call-one" data-d="${date}" data-e="${eid}">Кинуть клич</button>`):'')+(MOBQ.matches?`<span class="spacer"></span><button class="btn ${PICK&&PICK.done?'primary':''}" data-act="pick-next" data-d="${date}" data-e="${eid}">Следующее пустое ›</button>`:'')};
   });
 }
 function openEntryEdit(date,eid,newAt){
@@ -1716,6 +1716,32 @@ function scanFuture(pub,fn){withSrc(pub,()=>{const src=monthsSrc();Object.keys(s
 function offerTargets(pub){const out=[];scanFuture(pub,(d,en,cl,ch)=>{if(en.assistantId)return;const as=offersFor(en.id);if(as.length)out.push({d,en,cl,ch,as})});return out}
 function myOffers(card){const o=S.offers[card]||{};const out=[];if(!card||!Object.keys(o).length)return out;
   scanFuture(true,(d,en,cl,ch)=>{if(o[en.id])out.push({d,en,cl,ch,st:!en.assistantId?'wait':en.assistantId===card?'ok':'taken'})});return out}
+const inCallSet=()=>new Set(callItems().map(i=>i.eid));
+function openCallOne(d,eid){
+  let note='',who=null;
+  M.show(()=>{const f=withSrc(false,()=>findEntry(d,eid));if(!f)return{title:'<h2>Смена не найдена</h2>',body:''};
+    const{en,cl,ch}=f;
+    const cs=classify(d,en,busyMap(d,eid),loadMap());
+    const fit=cs.filter(c=>(c.group==='prio'||c.group==='can')&&!c.missing.length);
+    const all=cs.filter(c=>c.group!=='never');
+    if(who===null)who=fit.length?'fit':'all';
+    const pubHas=!!withSrc(true,()=>findEntry(d,eid));
+    const opt=(v,l,arr,dis)=>`<label class="opt ${dis?'dis':''}"><input type="radio" name="kWho" value="${v}" ${who===v?'checked':''} ${dis?'disabled':''}><span><b>${l} · ${arr.length}</b><br><span class="sub">${arr.length?arr.slice(0,6).map(c=>esc(surname(c.a.name))).join(', ')+(arr.length>6?'…':''):'никого'}</span></span></label>`;
+    return{title:`<h2>Клич на эту смену</h2><p class="sub">${fmtL(d)} · ${esc(shiftTime(en.shift))} · ${esc(cl.name)}, кресло ${ch+1} · ${esc(docName(en.doctorId))}</p>`,
+      body:`<div><h3 class="sh3">Кому</h3>${opt('fit','Только подходящим',fit,!fit.length)}${opt('all','Всем ассистентам',all,false)}
+        <p class="sub" style="margin:6px 0 0">Подходящие — свободны в это время, отметили этот день и умеют то, что нужно врачу.</p></div>
+        <label class="f">Комментарий (необязательно)<input type="text" id="k1Note" value="${esc(note)}" placeholder="Например: срочно, доплата"></label>
+        ${pubHas?'':'<div class="note">Смена ещё не опубликована: ассистенты увидят её в «Свободных», а в общем графике — после публикации.</div>'}`,
+      foot:`<button class="btn" data-act="call-one-back" data-d="${d}" data-e="${eid}">Назад</button><span class="spacer"></span><button class="btn primary" data-act="call-one-send" data-d="${d}" data-e="${eid}">Кинуть клич</button>`,
+      bind:r=>{r.querySelectorAll('[name=kWho]').forEach(x=>x.onchange=()=>{who=x.value});r.querySelector('#k1Note').oninput=e=>{note=e.target.value}}};
+  });
+  ACT['call-one-send']=b=>{const f=withSrc(false,()=>findEntry(d,eid));if(!f)return;const{en,cl,ch}=f;
+    const cs=classify(d,en,busyMap(d,eid),loadMap());
+    const to=who==='fit'?cs.filter(c=>(c.group==='prio'||c.group==='can')&&!c.missing.length).map(c=>c.a.id):null;
+    if(to&&!to.length){toast('Подходящих нет — выберите «Всем ассистентам»');return}
+    S.cfg.calls=(S.cfg.calls||[]).concat([Object.assign({id:uid(),at:new Date().toISOString(),note:note.trim(),items:[{d,eid,cid:cl.id,ch,shift:en.shift,doc:docName(en.doctorId),clinic:cl.name}]},to?{to}:{})]);
+    markCfg();render();openPicker(d,eid);toast(to?`Клич отправлен ${to.length} ассистентам`:'Клич отправлен всем ассистентам')};
+}
 function openOfferPub(d,eid){
   M.show(()=>{const card=myCard();const f=withSrc(true,()=>findEntry(d,eid));
     if(!f)return{title:'<h2>Смена не найдена</h2>',body:'<p class="sub">Похоже, расписание изменилось. Обновите страницу.</p>',foot:'<button class="btn" data-act="close">Закрыть</button>'};
@@ -1730,7 +1756,7 @@ function openOfferPub(d,eid){
     else{body+=`<p class="sub">Ответственный увидит отклик и, если всё подходит, поставит вас на эту смену.</p>${av&&(av==='day'||av===en.shift)?'':'<p class="sub">Этот день у вас не отмечен как рабочий — откликнуться всё равно можно.</p>'}`;btn=`<button class="btn primary" data-act="pub-offer" data-e="${eid}">Откликнуться</button>`}
     return{title:'<h2>Свободное место</h2>',body,foot:`<button class="btn" data-act="close">Закрыть</button><span class="spacer"></span>${btn}`}});
 }
-function callItems(){const out=[];(S.cfg.calls||[]).forEach(c=>(c.items||[]).forEach(it=>{if(it.d>=TODAY)out.push(Object.assign({call:c},it))}));return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.shift]-SHO[y.shift])}
+function callItems(){const out=[];(S.cfg.calls||[]).forEach(c=>{if(c.to&&!isAdmin()&&!c.to.includes(myCard()))return;(c.items||[]).forEach(it=>{if(it.d>=TODAY)out.push(Object.assign({call:c},it))})});return out.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:SHO[x.shift]-SHO[y.shift])}
 function pruneCalls(){if(!SUPA_ON||!(S.cfg.calls||[]).length)return;let ch=false;
   withSrc(false,()=>S.cfg.calls.forEach(c=>{const n=c.items.filter(it=>{if(it.d<TODAY)return false;const f=findEntry(it.d,it.eid);return f&&!f.en.assistantId});if(n.length!==c.items.length){c.items=n;ch=true}}));
   const k=S.cfg.calls.filter(c=>c.items.length);if(k.length!==S.cfg.calls.length){S.cfg.calls=k;ch=true}
@@ -1770,7 +1796,7 @@ function viewCallsStaff(card){
   let h='',last='';
   items.forEach(it=>{if(it.d!==last){if(last)h+='</div>';h+=`<div class="myday"><div class="mydate ${wdOf(it.d)>4?'we':''}"><b class="num">${fmt(it.d)}</b><span>${DAYF[wdOf(it.d)]}</span></div>`;last=it.d}
     const on=!!mine[it.eid],bz=busy(it);
-    h+=`<div class="myshift">${shChip(it.shift)}<div style="flex:1;min-width:0"><div class="myt"><b>${esc(shiftTime(it.shift))}</b> · ${esc(it.clinic)}, кресло ${it.ch+1}</div><div class="mym">${esc(it.doc)}</div></div>
+    h+=`<div class="myshift">${shChip(it.shift)}<div style="flex:1;min-width:0"><div class="myt"><b>${esc(shiftTime(it.shift))}</b> · ${esc(it.clinic)}, кресло ${it.ch+1}</div><div class="mym">${esc(it.doc)}</div>${it.call.note?`<div class="mym" style="color:var(--accent)">${esc(it.call.note)}</div>`:''}</div>
       ${bz?'<span class="sub">вы заняты</span>':`<button class="btn sm ${on?'':'primary'}" data-act="call-offer" data-e="${it.eid}">${on?'Отменить отклик':'Могу выйти'}</button>`}</div>`});
   if(last)h+='</div>';
   return`<div><h1>Свободные смены</h1><p class="sub">Ответственному не хватает ассистентов на эти смены. Нажмите «Могу выйти» — он увидит отклик и решит, кого поставить.</p></div>
@@ -2641,6 +2667,9 @@ ACT_LATE.push(()=>{
   ACT['pub-offer-open']=b=>openOfferPub(b.dataset.d,b.dataset.e);
   ACT['pub-offer']=b=>{const card=myCard();if(!card)return;const o=S.offers[card]=S.offers[card]||{};const e=b.dataset.e;
     if(o[e])delete o[e];else o[e]=new Date().toISOString();markAvail(card);const on=!!o[e];M.close();render();toast(on?'Отклик отправлен ответственному':'Отклик отменён')};
+  ACT['call-one']=b=>openCallOne(b.dataset.d,b.dataset.e);
+  ACT['call-one-back']=b=>openPicker(b.dataset.d,b.dataset.e);
+  ACT['call-one-drop']=b=>{const e=b.dataset.e;S.cfg.calls=(S.cfg.calls||[]).map(c=>Object.assign({},c,{items:c.items.filter(i=>i.eid!==e)})).filter(c=>c.items.length);markCfg();render();M.refresh();toast('Клич на смену снят')};
   ACT['mflt']=b=>{const v=b.dataset.v;UI.mfilt=UI.mfilt===v?null:v;saveUI();render()};
   ACT['mnav']=b=>{const v=b.dataset.v;
     if(v==='sched'){UI.tab='sched';if(!['board','pub'].includes(UI.mode))UI.mode='board'}
