@@ -19,18 +19,18 @@
   --ok:#24804F; --ok-soft:#DAF0E2; --warn:#9C6512; --warn-soft:#FAEED3; --bad:#BC3A33; --bad-soft:#F8DEDC;
   --font-display:"Unbounded","Onest",system-ui,sans-serif;
   --font-body:"Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --r:10px;
+  --r:10px; --today:#2F6FD6;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0E1718; --surface:#152223; --sunk:#1B2B2C; --line:#2A3E3F; --ink:#E2EDED; --muted:#92A9AA;
   --accent:#3DB2AA; --accent-ink:#03201E; --accent-soft:#133A38;
   --am:#EDB45E; --am-soft:#3A2B12; --pm:#A0A0F6; --pm-soft:#25254B; --day:#3DB2AA; --day-soft:#133A38;
-  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; color-scheme:dark}}
+  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; --today:#3F7FE6; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0E1718; --surface:#152223; --sunk:#1B2B2C; --line:#2A3E3F; --ink:#E2EDED; --muted:#92A9AA;
   --accent:#3DB2AA; --accent-ink:#03201E; --accent-soft:#133A38;
   --am:#EDB45E; --am-soft:#3A2B12; --pm:#A0A0F6; --pm-soft:#25254B; --day:#3DB2AA; --day-soft:#133A38;
-  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; color-scheme:dark}
+  --ok:#5CC48A; --ok-soft:#15321F; --warn:#E3AA4C; --warn-soft:#382A11; --bad:#F27D74; --bad-soft:#3D1A18; --today:#3F7FE6; color-scheme:dark}
 
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.45;
@@ -295,6 +295,32 @@ body.has-box .top{position:static}
 .scrollbox .board th.lab{position:sticky;left:0;z-index:1}
 .scrollbox .amap .sumr th,.scrollbox .amap .sumr td{position:static}
 @media (hover:none){.hint{display:none}}
+.mchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
+.mchips::-webkit-scrollbar{display:none}
+.mchip{flex:none;font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);white-space:nowrap;cursor:pointer}
+.mchip[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.msep{flex:none;width:1px;background:var(--line);margin:4px 2px}
+.mwk{display:grid;gap:3px;padding:0 4px 6px;font-size:12px;line-height:1.2}
+.mch{position:sticky;top:0;z-index:2;background:var(--surface);font-size:12px;font-weight:600;color:var(--muted);text-align:center;padding:7px 2px;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdl{text-align:center;font-size:11px;color:var(--muted);padding:4px 0;border-radius:8px;line-height:1.15;align-self:start}
+.mdl b{display:block;font-size:15px;color:var(--ink)}
+.mdl.we{color:var(--bad)}
+.mdl.today{background:var(--today);color:#fff}.mdl.today b{color:#fff}
+.mcell{display:flex;flex-direction:column;gap:3px;min-width:0}
+.mp{display:block;width:100%;text-align:left;font:inherit;border:1.5px solid transparent;border-radius:6px;padding:3px 5px;background:var(--ok-soft);color:var(--ok);min-width:0}
+button.mp{cursor:pointer}
+.mp.x{background:var(--bad-soft);color:var(--bad)}
+.mp.w{background:var(--warn-soft);color:var(--warn)}
+.mp.me{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.mp.me.x{background:var(--bad-soft);color:var(--bad)}
+.mp span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mp .mt{font-size:11px}
+.mp .ma{font-weight:600;font-size:12.5px}
+.mp .md{font-size:11px;color:var(--muted)}
+.mrule{grid-column:1/-1;height:1px;background:var(--line);margin:2px 0}
+.moff{grid-column:2/-1;align-self:center;font-size:12px;color:var(--muted);background:var(--sunk);border-radius:8px;padding:5px 10px}
+.mlegend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 2px 0}
+.mlegend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1.5px solid transparent}
 .zoom{display:inline-flex;align-items:center;gap:2px;background:var(--sunk);border-radius:9px;padding:2px}
 .zoom .btn{min-width:30px;justify-content:center}
 .zoom .btn.ghost{min-width:52px;color:var(--ink)}
@@ -407,7 +433,7 @@ body.dragging,body.dragging *{user-select:none!important;cursor:grabbing!importa
 /* ---------- подключение к базе (заполняется для версии на GitHub) ---------- */
 const SUPA={url:'https://qrlzktxrmhpdlbjmgxxy.supabase.co',key:'sb_publishable_5TyInJWZjm2G06O_ay1Sng_-D1wTLUB',proxy:'https://functions.yandexcloud.net/d4e108hbrhpvlvk7u9li'}; // proxy — посредник в России (Yandex Cloud Functions)
 const SUPA_ON=!!(SUPA.url&&SUPA.key);
-const BUILD='01.11.2026 23:53'; // заполняется при выкладке на GitHub
+const BUILD='02.11.2026 07:46'; // заполняется при выкладке на GitHub
 const ENV='test'; // 'test' — тестовая версия
 const LOGIN_DOMAIN='mregorik.github.io'; // логин «ivanova» хранится в базе как ivanova@mregorik.github.io
 const LOGIN_RE=/^[a-z0-9][a-z0-9._-]{2,29}$/;
@@ -1204,6 +1230,38 @@ function boardV(dates,cls){
   });
   return h+`</tbody></table>`;
 }
+/* телефон: неделя карточками — дни строками, клиники столбцами */
+const MOBQ=matchMedia('(max-width:700px)');
+const MOB=()=>MOBQ.matches&&UI.mview!=='table'&&!TOUR; // во время обучения — обычная таблица
+try{MOBQ.addEventListener('change',()=>{try{render()}catch(e){}})}catch(e){}
+function mSel(dates,cls){
+  let sel=(UI.mcl||[]).filter(id=>cls.some(c=>c.id===id));
+  if(!sel.length){const card=myCard(),f=ROLE()==='assistant'?'assistantId':ROLE()==='doctor'?'doctorId':null;
+    if(f&&card){const st=new Set();dates.forEach(d=>forEntries(d,(en,cl)=>{if(en[f]===card)st.add(cl.id)}));sel=cls.filter(c=>st.has(c.id)).map(c=>c.id)}
+    if(!sel.length)sel=cls.slice(0,2).map(c=>c.id)}
+  return sel.slice(0,3);
+}
+function mChips(dates,cls){
+  const sel=mSel(dates,cls);
+  return`<div class="mchips" role="group" aria-label="Какие клиники показывать">${cls.map(c=>`<button class="mchip" data-act="mcl" data-v="${c.id}" aria-pressed="${sel.includes(c.id)}">${esc(c.name)}</button>`).join('')}<span class="msep"></span><button class="mchip" data-act="mdoc" aria-pressed="${!!UI.mdoc}">Врачи</button></div>`;
+}
+function boardM(dates,cls){
+  const sel=mSel(dates,cls),sc=cls.filter(c=>sel.includes(c.id));
+  const card=myCard(),role=ROLE(),ed=editing();
+  let h=`<div class="mwk" style="grid-template-columns:34px repeat(${sc.length},minmax(0,1fr))"><div class="mch"></div>${sc.map(c=>`<div class="mch">${esc(c.name)}</div>`).join('')}`;
+  dates.forEach((d,i)=>{const w=wdOf(d);if(i)h+='<div class="mrule"></div>';
+    const cells=sc.map(cl=>{const out=[];for(let ch=0;ch<cl.chairs;ch++)cellArr(d,cl.id,ch,false).forEach(en=>out.push({en,ch}));return out.sort((x,y)=>x.ch-y.ch||SHO[x.en.shift]-SHO[y.en.shift])});
+    h+=`<div class="mdl ${d===TODAY?'today':''} ${w>4?'we':''}"><b class="num">${pd(d).getDate()}</b>${WD[w]}</div>`;
+    if(!cells.some(c=>c.length)){h+=`<div class="moff">смен нет</div>`;return}
+    cells.forEach(arr=>{h+=`<div class="mcell">${arr.map(({en,ch})=>{const a=asById(en.assistantId);
+      const me=(role==='assistant'&&!!card&&en.assistantId===card)||(role==='doctor'&&!!card&&en.doctorId===card);
+      const c='mp'+(a?'':' x')+(me?' me':'')+(ed&&a&&entryWarn(d,en)?' w':'');
+      const inner=`<span class="mt num">${ch+1} · ${esc(shiftTime(en.shift))}</span><span class="ma">${a?esc(surname(a.name)):'—'}</span>${UI.mdoc?`<span class="md">${esc(surname(docName(en.doctorId)))}</span>`:''}`;
+      return ed?`<button class="${c}" data-act="pick" data-d="${d}" data-e="${en.id}" title="${esc(docName(en.doctorId))}">${inner}</button>`:`<div class="${c}">${inner}</div>`}).join('')}</div>`});
+  });
+  return h+`</div>`;
+}
+const mLegend=()=>`<div class="mlegend"><span><i style="background:var(--ok-soft)"></i>ассистент стоит</span><span><i style="background:var(--bad-soft)"></i>место пустое</span>${editing()?'<span><i style="background:var(--warn-soft)"></i>есть замечание</span>':''}${['assistant','doctor'].includes(ROLE())?'<span><i style="background:var(--accent-soft);border-color:var(--accent)"></i>ваша смена</span>':''}<span><i style="background:var(--today)"></i>сегодня</span></div>`;
 function viewBoard(){
   const dates=range(UI.from,UI.to);
   const cls=S.cfg.clinics;
@@ -1214,7 +1272,7 @@ function viewBoard(){
   if(!cls.length){board=`<div class="empty-board"><h2>Нет клиник</h2><p>Добавьте клинику, укажите количество кресел и обычную неделю врачей.</p><button class="btn primary" data-act="mode" data-v="week">Настроить клиники</button></div>`}
   else if(!has){board=editing()?`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} расписания ещё нет</h2><p>Врачи подтянутся из базовой недели, останется расставить ассистентов.</p><button class="btn primary" data-act="open-gen">Сформировать расписание</button></div>`:`<div class="empty-board"><h2>На ${fmt(UI.from)}–${fmt(UI.to)} графика пока нет</h2><p>Переключите период стрелками.</p></div>`}
   else{
-    board=UI.orient==='v'?boardV(dates,cls):boardH(dates,cls);
+    board=MOB()?boardM(dates,cls):UI.orient==='v'?boardV(dates,cls):boardH(dates,cls);
   }
   const st=SET();const cost=st.rates?costMap():{};const costTotal=Object.values(cost).reduce((x,y)=>x+y,0);
   const rail=`<details class="rail" id="rail" ${UI.railOpen?'open':''}><summary data-act="rail"><h2>Ассистенты</h2><span class="sub">· даты работы</span><span class="chev">›</span></summary>
@@ -1230,7 +1288,7 @@ function viewBoard(){
   <div class="toolbar">
     <div class="period"><button class="btn sm" data-act="shift-period" data-v="-7" aria-label="Неделя назад">‹</button>
       <input type="date" id="pFrom" value="${UI.from}" aria-label="С"><span class="sub">—</span><input type="date" id="pTo" value="${UI.to}" aria-label="По">
-      <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>${zoomCtl()}
+      <button class="btn sm" data-act="shift-period" data-v="7" aria-label="Неделя вперёд">›</button></div>${MOB()?'':zoomCtl()}${MOBQ.matches&&has?`<button class="btn sm" data-act="mview">${MOB()?'Таблицей':'Карточками'}</button>`:''}
     <span class="spacer"></span>
     ${editing()?`<button class="btn" data-act="open-gen">Сформировать</button>
     <button class="btn" data-act="open-auto">Автозаполнение</button>${SUPA_ON?`<button class="btn" data-act="collect">Сбор дат</button>${(()=>{const n=callItems().length,o=callItems().reduce((x,it)=>x+offersFor(it.eid).length,0);return`<button class="btn ${o?'hasoff':''}" data-act="calls">Клич${n?' ('+n+')':''}${o?` · откликов: ${o}`:''}</button>`})()}<button class="btn primary" data-act="publish">Опубликовать</button>`:''}`:''}
@@ -1239,7 +1297,7 @@ function viewBoard(){
   </div>
   ${has?`<div class="status"><span>Смен врачей: <b class="num">${total}</b></span><span>С ассистентом: <b class="num">${total-empty}</b></span><span class="${empty?'bad':''}">Пустых: <b class="num">${empty}</b></span>${warn?`<span>С замечаниями: <b class="num">${warn}</b></span>`:''}${st.rates?`<span>Расходы на ассистентов: <b class="num">${rub(costTotal)}</b></span>`:''}
     <span class="legend">${shChip('day')} весь день ${shChip('am')} утро ${shChip('pm')} вечер</span></div>`:''}
-  <div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap scrollbox">${board}</div>${editing()?rail:''}</div>
+  ${MOB()&&has&&cls.length?mChips(dates,cls):''}<div class="sched" ${editing()?'':'style="grid-template-columns:minmax(0,1fr)"'}><div class="boardwrap scrollbox">${board}</div>${editing()?rail:''}</div>${MOB()&&has&&cls.length?mLegend():''}
   ${has?'<p class="sub hint" style="margin:0">Прокрутка вбок: колесо мыши над строкой с датами или Shift + колесо.</p>':''}`;
 }
 function viewAvailMap(){
@@ -2435,6 +2493,14 @@ document.addEventListener('pointermove',e=>{if(!PAINT)return;const el=document.e
 const paintEnd=()=>{if(!PAINT)return;const p=PAINT;PAINT=null;if(p.done.size){markAvail(p.aid);justDragged();if(p.kind==='cal')AV.refresh();else render()}};
 document.addEventListener('pointerup',paintEnd);document.addEventListener('pointercancel',paintEnd);
 
+ACT_LATE.push(()=>{
+  ACT['mcl']=b=>{const cls=S.cfg.clinics,id=b.dataset.v;let sel=mSel(range(UI.from,UI.to),cls);
+    if(sel.includes(id)){if(sel.length>1)sel=sel.filter(x=>x!==id)}else{if(sel.length>=3)sel.shift();sel.push(id)}
+    UI.mcl=cls.map(c=>c.id).filter(x=>sel.includes(x));saveUI();render()};
+  ACT['mdoc']=()=>{UI.mdoc=!UI.mdoc;saveUI();render()};
+  ACT['mview']=()=>{UI.mview=UI.mview==='table'?'cards':'table';saveUI();render()};
+  ['mcl','mdoc','mview'].forEach(k=>ROLE_OK.add(k));
+});
 ACT_LATE.forEach(f=>f());
 render();
 initStore();
